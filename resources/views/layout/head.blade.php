@@ -37,7 +37,7 @@
     <!-- App css -->
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/style.css" />
     <link id="color" rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/color-1.css" media="screen" />
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
 </head>
 
 <body>

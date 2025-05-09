@@ -7,7 +7,7 @@
                     <h5 class="sidebar-title f-w-700">Pinned</h5>
                 </div>
             </li>
-            <li class="sidebar-main-title">
+            {{-- <li class="sidebar-main-title">
                 <div>
                     <h5 class="lan-1 f-w-700 sidebar-title">General</h5>
                 </div>
@@ -17,7 +17,7 @@
                     <i class="fi fi-rr-home"></i>
                     <h6 class="f-w-600">Dashboard</h6>
                 </a>
-            </li>
+            </li> --}}
 
 
             <li class="sidebar-main-title">
