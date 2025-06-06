@@ -38,6 +38,8 @@
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/style.css" />
     <link id="color" rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/color-1.css" media="screen" />
     {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
+    <!-- SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
@@ -49,4 +51,4 @@
     <div class="loader-wrapper">
         <div class="loader"><span></span><span></span><span></span><span></span><span></span></div>
     </div>
-    <div class="page-wrapper compact-wrapper" id="pageWrapper">
+    <div class="page-wrapper horizontal-sidebar" id="pageWrapper">

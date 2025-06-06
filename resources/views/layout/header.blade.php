@@ -1,28 +1,16 @@
 <header class="page-header row">
     <div class="logo-wrapper d-flex align-items-center col-auto">
 
-        <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" width="150px"/>
-            <img class="dark-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" /></a>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/dashboard.png" alt="logo" width="150px"/>
+                <img class="dark-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" /></a>
         <a class="close-btn toggle-sidebar" href="javascript:void(0)">
             <i class="fi fi-rr-apps-add"></i>
         </a>
     </div>
     <div class="page-main-header col">
         <div class="header-left">
-            <form class="form-inline search-full col" action="#" method="get">
-                <div class="form-group w-100">
-                    <div class="Typeahead Typeahead--twitterUsers">
-                        <div class="u-posRelative">
-                            <input class="demo-input Typeahead-input form-control-plaintext w-100" type="text"
-                                placeholder="Search Admiro .." name="q" title="" autofocus="autofocus" />
-                            <div class="spinner-border Typeahead-spinner" role="status"><span
-                                    class="sr-only">Loading...</span></div><i class="close-search"
-                                data-feather="x"></i>
-                        </div>
-                        <div class="Typeahead-menu"></div>
-                    </div>
-                </div>
-            </form>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/sims.png" alt="logo" width="150px"/>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" width="150px"/>
 
         </div>
         <div class="nav-right">

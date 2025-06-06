@@ -50,25 +50,23 @@
             <div class="col-12 p-0">
                 <div class="login-card login-dark">
                     <div>
-                        <div><a class="logo" href="#"><img class="img-fluid for-light m-auto"
-                                    src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="looginpage" ><img
-                                    class="img-fluid for-dark" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo"></a>
-                        </div>
                         <div class="login-main">
+                            <div><a class="logo" href="#"><img class="img-fluid for-dark" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" width="200px"></a>
+                        </div>
                             <form action="{{ route('login.post') }}" method="POST" class="theme-form">
                                 @csrf
                                 <h2 class="text-center">Masuk ke akun Anda</h2>
                                 <p class="text-center">Masukkan NRP dan kata sandi Anda untuk masuk.</p>
                                 <div class="form-group">
-                                    <label class="col-form-label">Username/NRP</label>
-                                    <input class="form-control" type="text" required="" name="nik" placeholder="0123S">
+                                    <label class="col-form-label" for="nik">Username/NRP</label>
+                                    <input class="form-control" type="text" required="" id="nik" name="nik" placeholder="0123S">
                                 </div>
                                 <div class="form-group">
-                                    <label class="col-form-label">Password</label>
+                                    <label class="col-form-label" for="password">Password</label>
                                     <div class="form-input position-relative">
-                                        <input class="form-control" type="password" name="password" required=""
+                                        <input class="form-control" type="password" id="password" name="password" required=""
                                             placeholder="*********">
-                                        <div class="show-hide"><span class="show"> </span></div>
+                                        {{-- <div class="show-hide"><span class="show"> </span></div> --}}
                                     </div>
                                 </div>
                                 <div class="form-group mb-0 checkbox-checked">
@@ -80,7 +78,8 @@
                                         <button class="btn btn-primary btn-block w-100" type="submit">Masuk </button>
                                     </div>
                                 </div>
-
+                                <br>
+                                <p class="text-center">Copyright © IT-FMS 2025 PT. SIMS JAYA KALTIM</p>
                             </form>
                         </div>
                     </div>

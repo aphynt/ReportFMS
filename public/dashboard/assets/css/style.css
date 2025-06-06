@@ -11865,17 +11865,17 @@ textarea.form-control-lg {
   }
 }
 :root {
-  --white: #ffffff;
+  --white: #EAEFEF;
   --black: #000000;
   --body-font-color: #292929;
   --font-color: #aaa3a0;
   --shape-border: #e5e5e5;
   --scrollbar-color: #aeaeae;
   --light-border: #dceee6;
-  --theme-default: #308e87;
+  --theme-default: #075B5E;
   --theme-secondary: #f39159;
   --body-color: #f9f7f6;
-  --primary-color: #308e87;
+  --primary-color: #075B5E;
   --secondary-color: #f39159;
   --success-color: #3eb95f;
   --info-color: #02a2b9;
@@ -11913,7 +11913,7 @@ textarea.form-control-lg {
   --dropdown-menu: #2B2B2B;
   --dropdown-bg-color: #F9F9F9;
   --dropdown-content-color:#F2F2F2;
-  --dropdown-toggle: #308e87;
+  --dropdown-toggle: #075B5E;
   --table-hover-color: #F6F6F6;
   --table-double-color: #DEE2E6;
   --ping-success: #369B36;
@@ -12011,7 +12011,7 @@ textarea.form-control-lg {
      typography css start
 ==========================**/
 body {
-  font-family: "Nunito Sans", sans-serif;
+  font-family: "Poppins", sans-serif;
   font-size: 12px;
   color: var(--body-font-color);
   background-color: transparent !important;
@@ -15639,7 +15639,7 @@ body.modal-open .select2-container--open .select2-dropdown {
 }
 .grid-bookmark-view.active,
 .list-layout-view.active {
-  color: #308e87;
+  color: #075B5E;
 }
 
 .contact-page .modal-content .modal-header {
@@ -17363,7 +17363,7 @@ th {
 
 .alert-light-primary {
   background-color: rgba(48, 142, 135, 0.2);
-  color: #308e87;
+  color: #075B5E;
 }
 
 .alert-light {
@@ -27945,7 +27945,7 @@ input::-webkit-inner-spin-button {
 .page-wrapper.horizontal-sidebar .page-body-wrapper .page-sidebar .main-sidebar .sidebar-menu .sidebar-list .sidebar-submenu {
   position: fixed;
   z-index: 4;
-  width: 200px;
+  width: 350px;
   margin-top: 10px;
   box-shadow: 0 0 5px rgba(15, 34, 58, 0.15);
   padding: 15px;
@@ -40940,13 +40940,18 @@ pre {
 
 .login-card {
   min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
-  background: url("../images/login/login_bg.jpg");
-  background-position: center;
   padding: 30px 12px;
+  margin: 0;
+  overflow: hidden;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.5), #001932), url("../images/login/login_bg.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center center;
 }
 .login-card.login-bg {
   background: rgba(48, 142, 135, 0.06) !important;
@@ -47353,7 +47358,7 @@ label {
 ==========================**/
 .sidebar-pannle-main {
   position: fixed;
-  bottom: 80px;
+  bottom: 15px;
   z-index: 9;
   right: 30px;
 }
@@ -47559,7 +47564,7 @@ label {
   opacity: 0.9;
 }
 .setting-sidebar .customizer-body .customizer-color ul .color-layout > div {
-  background-color: #308E87;
+  background-color: #075B5E;
   height: 100%;
   width: 100%;
   border-radius: 5px;

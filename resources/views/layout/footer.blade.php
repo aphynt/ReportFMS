@@ -2,10 +2,10 @@
     <div class="container-fluid">
         <div class="row">
             <div class="col-md-6 footer-copyright">
-                <p class="mb-0">Copyright 2025 </p>
+                <p class="mb-0">Copyright © 2025</p>
             </div>
             <div class="col-md-6">
-                <p class="float-end mb-0">© IT-FMS Support.
+                <p class="float-end mb-0">IT-FMS Support
 
                 </p>
             </div>

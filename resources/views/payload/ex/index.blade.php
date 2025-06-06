@@ -34,7 +34,7 @@
             <div class="row">
                 {{-- <form action="" method="GET"> --}}
                 {{-- <div class="row g-3"> --}}
-                        <div class="col-md-3 col-sm-6 col-12">
+                        <div class="col-md-2 col-sm-6 col-12">
                             <label for="range-date-1" class="form-label">Tanggal</label>
                             <div class="input-group">
                                 <input class="form-control" id="range-date" name="tanggal" type="date">
@@ -52,16 +52,18 @@
 
                         <!-- Range 2 -->
                         <div class="col-md-5 col-sm-6 col-12">
-                            <label for="range-date-2" class="form-label">EX</label>
+                            <label for="range-date-2" class="form-label">Loader</label>
                             <div class="input-group">
                                 <input class="some_class_name" name="input-custom-ex" placeholder="write some tags" value="ALL">
                             </div>
                         </div>
 
-                        <!-- Range 3 -->
+                        <div class="col-md-1 col-sm-6 col-12 p-2">
+
+                        </div>
 
 
-                        <div class="col-md-1 col-sm-6 col-12">
+                        <div class="col-md-1 col-sm-6 col-12 p-2">
                             <label for="range-date-3" class="form-label">.</label>
                             <div class="input-group">
                                 <button id="search" class="btn btn-primary w-100">Cari</button>
