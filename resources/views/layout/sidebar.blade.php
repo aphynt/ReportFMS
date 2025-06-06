@@ -39,7 +39,7 @@
                     <i class="fi fi-rr-ramp-loading"></i>
                     <h6 class="f-w-600">Temuan SAP</h6>
                 </a>
-                <ul class="sidebar-submenu">
+                {{-- <ul class="sidebar-submenu">
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH Loading Point</a></li>
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH Haul Road</a></li>
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH Disposal/Dumping Point</a></li>
@@ -47,8 +47,8 @@
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH OGS</a></li>
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH Batu Bara</a></li>
                     <li> <a href="#" onclick="Swal.fire({ icon: 'info', title: 'Upps!', text: 'Fitur ini sedang dalam proses pengembangan.', confirmButtonText: 'OK' })">KLKH Intersection (Simpang Empat)</a></li>
-                </ul>
-                {{-- <ul class="sidebar-submenu">
+                </ul> --}}
+                <ul class="sidebar-submenu">
                     <li> <a href="{{ route('loadingPoint.index') }}">KLKH Loading Point</a></li>
                     <li> <a href="{{ route('haulRoad.index') }}">KLKH Haul Road</a></li>
                     <li> <a href="{{ route('disposal.index') }}">KLKH Disposal/Dumping Point</a></li>
@@ -56,7 +56,7 @@
                     <li> <a href="{{ route('ogs.index') }}">KLKH OGS</a></li>
                     <li> <a href="{{ route('batuBara.index') }}">KLKH Batu Bara</a></li>
                     <li> <a href="{{ route('simpangEmpat.index') }}">KLKH Intersection (Simpang Empat)</a></li>
-                </ul> --}}
+                </ul>
             </li>
             {{-- <li class="sidebar-list"> <i class="fa-solid fa-thumbtack"></i><a class="sidebar-link"
                     href="letter-box.html">

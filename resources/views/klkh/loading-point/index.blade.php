@@ -41,24 +41,8 @@
                             </div>
                         </div>
 
-                        <div class="col-md-2 col-sm-6 col-12">
-                            <label for="range-date-3" class="form-label">Shift</label>
-                            <select class="form-select" name="shift" id="select">
-                              <option value="ALL">ALL</option>
-                              <option value="Siang">Siang</option>
-                              <option value="Malam">Malam</option>
-                            </select>
-                        </div>
 
-                        <!-- Range 2 -->
-                        <div class="col-md-5 col-sm-6 col-12">
-                            <label for="range-date-2" class="form-label">Loader</label>
-                            <div class="input-group">
-                                <input class="some_class_name" name="input-custom-ex" placeholder="write some tags" value="ALL">
-                            </div>
-                        </div>
-
-                        <div class="col-md-1 col-sm-6 col-12 p-2">
+                        <div class="col-md-8 col-sm-6 col-12 p-2">
 
                         </div>
 
@@ -89,88 +73,11 @@
             <div class="col-sm-12">
                 <div class="card">
                     <div class="card-header card-no-border pb-3">
-                        <h3>Payload per Excavator List</h3>
+                        <h3>KLKH Loading Point</h3>
                     </div>
                     <div class="card-body">
                         <div class="row">
-                            {{-- <div class="col-xl-4 col-sm-6 box-col-6">
-                                <div class="card ecommerce-widget">
-                                    <div class="card-body support-ticket-font">
-                                        <div class="row">
-                                            <div class="col-5"><span>Order</span>
-                                                <h3 class="total-num counter">2563</h3>
-                                            </div>
-                                            <div class="col-7">
-                                                <div class="text-end">
-                                                    <ul>
-                                                        <li>Profit<span class="product-stts text-success ms-2">8989<i class="fi fi-rr-angle-small-up"></i></i></span></li>
-                                                        <li>Loss<span class="product-stts text-danger ms-2">2560<i class="fi fi-rr-angle-small-down"></i></span></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="progress-showcase">
-                                            <div class="progress sm-progress-bar">
-                                                <div class="progress-bar bg-primary" role="progressbar"
-                                                    style="width: 70%" aria-valuenow="25" aria-valuemin="0"
-                                                    aria-valuemax="100"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-xl-4 col-sm-6 box-col-6">
-                                <div class="card ecommerce-widget">
-                                    <div class="card-body support-ticket-font">
-                                        <div class="row">
-                                            <div class="col-5"><span>Pending</span>
-                                                <h3 class="total-num counter">8943</h3>
-                                            </div>
-                                            <div class="col-7">
-                                                <div class="text-end">
-                                                    <ul>
-                                                        <li>Profit<span class="product-stts text-success ms-2">8989<i class="fi fi-rr-angle-small-up"></i></i></span></li>
-                                                        <li>Loss<span class="product-stts text-danger ms-2">2560<i class="fi fi-rr-angle-small-down"></i></span></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="progress-showcase">
-                                            <div class="progress sm-progress-bar">
-                                                <div class="progress-bar bg-secondary" role="progressbar"
-                                                    style="width: 70%" aria-valuenow="25" aria-valuemin="0"
-                                                    aria-valuemax="100"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-xl-4 col-sm-6 box-col-6">
-                                <div class="card ecommerce-widget">
-                                    <div class="card-body support-ticket-font">
-                                        <div class="row">
-                                            <div class="col-5"><span>Running</span>
-                                                <h3 class="total-num counter">2500</h3>
-                                            </div>
-                                            <div class="col-7">
-                                                <div class="text-end">
-                                                    <ul>
-                                                        <li>Profit<span class="product-stts text-success ms-2">8989<i class="fi fi-rr-angle-small-up"></i></i></span></li>
-                                                        <li>Loss<span class="product-stts text-danger ms-2">2560<i class="fi fi-rr-angle-small-down"></i></span></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="progress-showcase">
-                                            <div class="progress sm-progress-bar">
-                                                <div class="progress-bar bg-warning" role="progressbar"
-                                                    style="width: 70%" aria-valuenow="25" aria-valuemin="0"
-                                                    aria-valuemax="100"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div> --}}
+
                         </div>
                         <div id="loadingSpinner" style="display: none; text-align: center; margin: 20px;">
                             <div class="blinking-text">
@@ -228,51 +135,6 @@
     <!-- Container-fluid Ends-->
 </div>
 @include('layout.footer')
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const input = document.querySelector('input[name="input-custom-ex"]');
-
-        const originalWhitelist = @json($ex->pluck('VHC_ID')->prepend('ALL'));
-
-        const myTagify = new Tagify(input, {
-            whitelist: originalWhitelist,
-            maxTags: 30,
-            dropdown: {
-                maxItems: 30,
-                classname: "tags-look",
-                enabled: 0,
-                closeOnSelect: false
-            }
-        });
-
-        if (myTagify.value.length === 0) {
-            myTagify.addTags(['ALL']);
-        }
-
-        // Saat tag ditambahkan
-        myTagify.on('add', function(e) {
-            const tags = myTagify.value.map(item => item.value);
-
-            if (tags.includes('ALL') && tags.length > 1) {
-                myTagify.removeTag('ALL');
-            }
-
-            if (tags.length > 0 && myTagify.settings.whitelist.includes('ALL')) {
-                myTagify.settings.whitelist = originalWhitelist.filter(item => item !== 'ALL');
-            }
-        });
-
-        myTagify.on('remove', function(e) {
-            const tags = myTagify.value.map(item => item.value);
-
-            if (tags.length === 0) {
-                myTagify.settings.whitelist = originalWhitelist;
-                myTagify.addTags(['ALL']);
-            }
-        });
-    });
-</script>
-
 
 <script>
     $(document).ready(function () {

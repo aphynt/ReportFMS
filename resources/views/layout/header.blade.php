@@ -15,15 +15,6 @@
         </div>
         <div class="nav-right">
             <ul class="header-right">
-
-                <li class="search d-lg-none d-flex">
-                    <a href="javascript:void(0)">
-                        <svg>
-                            <use href="https://admin.pixelstrap.net/admiro/assets/svg/iconly-sprite.svg#Search">
-                            </use>
-                        </svg>
-                    </a>
-                </li>
                 <li> <a class="dark-mode" href="javascript:void(0)">
                     <i class="fi fi-rr-dark-mode-alt"></i></a>
                 </li>
