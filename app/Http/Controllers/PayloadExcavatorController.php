@@ -26,8 +26,8 @@ class PayloadExcavatorController extends Controller
         $endDate = $startDate;
 
         if ($tanggalInput) {
-            if (str_contains($tanggalInput, 'to')) {
-                [$startDate, $endDate] = array_map('trim', explode('to', $tanggalInput));
+            if (str_contains($tanggalInput, 's/d')) {
+                [$startDate, $endDate] = array_map('trim', explode('s/d', $tanggalInput));
             } else {
                 $startDate = trim($tanggalInput);
                 $endDate = $startDate;

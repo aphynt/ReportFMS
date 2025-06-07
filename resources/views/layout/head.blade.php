@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="author" content="PT. SIMS JAYA KALTIM" />
-    <title>Fleet Management System</title>
+    <title>{{ config('app.name') }}</title>
     <!-- Favicon icon-->
     <link rel="icon" href="{{ asset('dashboard/assets') }}/images/logo/favicon.png" type="image/x-icon" />
     <link rel="shortcut icon" href="{{ asset('dashboard/assets') }}/images/logo/favicon.png" type="image/x-icon" />
@@ -37,6 +37,7 @@
     <!-- App css -->
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/style.css" />
     <link id="color" rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/color-1.css" media="screen" />
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
     {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
     <!-- SweetAlert2 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

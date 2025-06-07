@@ -73,7 +73,7 @@
             <div class="col-sm-12">
                 <div class="card">
                     <div class="card-header card-no-border pb-3">
-                        <h3>KLKH Loading Point</h3>
+                        <h3>KLKH Batubara</h3>
                     </div>
                     <div class="card-body">
                         <div class="row">
@@ -127,7 +127,7 @@
             $('#loadingSpinner').show();
 
             $.ajax({
-                url: "{{ route('loadingPoint.api') }}",
+                url: "{{ route('batuBara.api') }}",
                 type: 'GET',
                 dataType: 'json',
                 data: {
@@ -172,7 +172,7 @@
         });
 
         function loadExcel(tanggal) {
-            let url = "{{ route('loadingPoint.excel') }}" + `?tanggal=${encodeURIComponent(tanggal)}`;
+            let url = "{{ route('batuBara.excel') }}" + `?tanggal=${encodeURIComponent(tanggal)}`;
             window.location.href = url;
         }
 

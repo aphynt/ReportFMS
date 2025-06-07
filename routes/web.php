@@ -25,6 +25,7 @@ Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::group(['middleware' => ['auth']], function(){
 
     Route::get('/dashboard/index', [DashboardController::class, 'index'])->name('dashboard.index');
+    Route::get('/dashboard/api', [DashboardController::class, 'api'])->name('dashboard.api');
 
     Route::get('/payload/exa', [PayloadExcavatorController::class, 'index'])->name('payload.ex.index');
     Route::get('/payload/api', [PayloadExcavatorController::class, 'api'])->name('payload.ex.api');

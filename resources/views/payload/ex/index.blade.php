@@ -204,7 +204,7 @@
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
-                                <tfoot>
+                                {{-- <tfoot>
                                     <tr>
                                         <th>Vehicle</th>
                                         <th>Loader</th>
@@ -217,7 +217,7 @@
                                         <th>Ritation Tonnage</th>
                                         <th>Category</th>
                                     </tr>
-                                </tfoot>
+                                </tfoot> --}}
                             </table>
                         </div>
                     </div>

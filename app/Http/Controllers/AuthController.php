@@ -19,7 +19,7 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->has('remember'))) {
             if (Auth::user()->statusenabled == true) {
-                return redirect()->route('payload.ex.index')->with('alert', 'Selamat Datang');
+                return redirect()->route('dashboard.index')->with('alert', 'Selamat Datang');
             } else {
                 Auth::logout();
                 $request->session()->invalidate();
