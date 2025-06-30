@@ -1,4 +1,4 @@
-@include('layout.head')
+@include('layout.head', ['title' => 'KLKH Intersection (Simpang Empat)'])
 @include('layout.header')
 @include('layout.sidebar')
 <style>
@@ -95,13 +95,14 @@
                             <p style="margin-top: 10px;">Sedang memuat data...</p>
                         </div>
                         <div class="table-responsive">
-                            <table class="display" id="basic-6">
+                            <table class="display" id="export-button">
                                 <thead>
                                     <tr>
                                         <th>DATE</th>
                                         <th>TIME</th>
                                         <th>PIT</th>
                                         <th>SHIFT</th>
+                                        <th>VALUE</th>
                                         <th style="min-width: 200px;">FIELD</th>
                                         <th style="min-width: 200px;">NOTES</th>
                                         <th style="min-width: 50px;">PIC</th>
@@ -121,7 +122,7 @@
 
 <script>
     $(document).ready(function () {
-        let table = $('#basic-6').DataTable();
+        let table = $('#export-button').DataTable();
 
         function loadTableData(tanggal) {
             $('#loadingSpinner').show();
@@ -138,11 +139,17 @@
 
                     if (response.data && response.data.length > 0) {
                         let mappedData = response.data.map(item => {
+                            let value = item.VALUE?.toLowerCase();
+                            let mappedValue =
+                                value === 'false' ? 'Tidak' :
+                                value === 'n/a' ? 'N/A' :
+                                'Ya';
                             return [
                                 item.DATE,
                                 item.TIME,
                                 item.PIT,
                                 item.SHIFT,
+                                mappedValue,
                                 item.FIELD,
                                 item.NOTES,
                                 item.NAMA_PIC

@@ -1,4 +1,4 @@
-@include('layout.head')
+@include('layout.head', ['title' => 'Payload per Excavator'])
 @include('layout.header')
 @include('layout.sidebar')
 <style>

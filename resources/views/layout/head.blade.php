@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="author" content="PT. SIMS JAYA KALTIM" />
-    <title>{{ config('app.name') }}</title>
+    <title>{{ $title }} - {{ config('app.name') }}</title>
     <!-- Favicon icon-->
     <link rel="icon" href="{{ asset('dashboard/assets') }}/images/logo/favicon.png" type="image/x-icon" />
     <link rel="shortcut icon" href="{{ asset('dashboard/assets') }}/images/logo/favicon.png" type="image/x-icon" />
@@ -32,6 +32,7 @@
     <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/tagify.css">
     <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/flatpickr/flatpickr.min.css">
     <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/datatables.css"/>
+    <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/datatable-extension.css">
     <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/slick.css" />
     <link rel="stylesheet" type="text/css" href="{{ asset('dashboard/assets') }}/css/vendors/slick-theme.css" />
     <!-- App css -->

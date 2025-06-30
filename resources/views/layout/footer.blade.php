@@ -40,6 +40,8 @@
 <!-- slick-->
 <script src="{{ asset('dashboard/assets') }}/js/slick/slick.min.js"></script>
 <script src="{{ asset('dashboard/assets') }}/js/slick/slick.js"></script>
+
+
 <!-- select2_options-->
 <script src="{{ asset('dashboard/assets') }}/js/vendors/%40yaireo/tagify/dist/tagify.js"></script>
 <script src="{{ asset('dashboard/assets') }}/js/vendors/%40yaireo/tagify/dist/tagify.polyfills.min.js"></script>
@@ -51,6 +53,26 @@
 <script src="{{ asset('dashboard/assets') }}/js/flat-pickr/custom-flatpickr.js"></script>
 <!-- data_table-->
 <script src="{{ asset('dashboard/assets') }}/js/js-datatables/datatables/jquery.dataTables.min.js"></script>
+<!-- datatable_extension-->
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.buttons.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/jszip.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/buttons.colVis.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/pdfmake.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/vfs_fonts.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.autoFill.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.select.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/buttons.bootstrap4.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/buttons.html5.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/buttons.print.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.bootstrap4.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.responsive.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/responsive.bootstrap4.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.keyTable.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.colReorder.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.fixedHeader.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.rowReorder.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/dataTables.scroller.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/datatable/datatable-extension/custom.js"></script>
 <!-- counter-->
 <script src="{{ asset('dashboard/assets') }}/js/counter/jquery.waypoints.min.js"></script>
 <script src="{{ asset('dashboard/assets') }}/js/counter/jquery.counterup.min.js"></script>
