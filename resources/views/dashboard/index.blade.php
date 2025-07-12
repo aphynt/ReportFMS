@@ -1,4 +1,4 @@
-@include('layout.head')
+@include('layout.head', ['title' => 'Dashboard'])
 @include('layout.header')
 @include('layout.sidebar')
 {{-- <style>
