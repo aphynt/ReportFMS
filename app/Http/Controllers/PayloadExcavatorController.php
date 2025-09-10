@@ -245,13 +245,13 @@ class PayloadExcavatorController extends Controller
     {
         $tanggalInput = $request->input('tanggal');
 
-        $shiftInput = $request->input('shift');
-        $shift = match ($shiftInput) {
-            'Siang' => '6',
-            'Malam' => '7',
-            'ALL', null => '',
-            default => '',
-        };
+        $shift = $request->input('shift');
+        // $shift = match ($shiftInput) {
+        //     'Siang' => '6',
+        //     'Malam' => '7',
+        //     'ALL', null => '',
+        //     default => '',
+        // };
 
 
         return Excel::download(new PayloadEXOneHundredandFifteenExport($tanggalInput, $shift), 'Payload lebih dari 115.xlsx');

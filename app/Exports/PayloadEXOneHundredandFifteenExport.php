@@ -28,69 +28,64 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
     }
 
     public function collection()
-    {
-        // Ambil data dari SQL
-        $data = DB::select(
-            'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
-            [$this->date, $this->shift]
-        );
+{
+    // Ambil data dari SQL
+    $data = DB::select(
+        'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
+        [$this->date, $this->shift]
+    );
 
-        // Tentukan jam range
-        $jamRange = match ($this->shift) {
-            '6' => range(7, 18),
-            '7' => array_merge(range(19, 23), range(0, 6)),
-            default => array_merge(range(7, 23), range(0, 6)),
-        };
+    // Jam range selalu 7–6
+    $jamRange = array_merge(range(7, 23), range(0, 6));
 
-        $jamDefault = collect($jamRange)->mapWithKeys(fn($h) => [$h => 0])->toArray();
+    $jamDefault = collect($jamRange)->mapWithKeys(fn($h) => [$h => 0])->toArray();
 
-        // Filter >115 ton dan group
-        $data = collect($data)
-            ->filter(fn($item) => $item->RIT_TONNAGE > 115)
-            ->groupBy(fn($item) => $item->LOD_LOADERID.'-'.$item->PERSONALNAME.'-'.$item->OPR_SHIFTNO)
-            ->map(function ($group) use ($jamRange, $jamDefault) {
-                $first = $group->first();
-                $jam   = $jamDefault;
+    // Filter >115 ton dan group
+    $data = collect($data)
+        ->filter(fn($item) => $item->RIT_TONNAGE > 115)
+        ->groupBy(fn($item) => $item->LOD_LOADERID.'-'.$item->PERSONALNAME.'-'.$item->OPR_SHIFTNO)
+        ->map(function ($group) use ($jamRange, $jamDefault) {
+            $first = $group->first();
+            $jam   = $jamDefault;
 
-                foreach ($group as $item) {
-                    $hour = Carbon::parse($item->OPR_REPORTTIME)->hour;
-                    if (in_array($hour, $jamRange)) {
-                        $jam[$hour]++;
-                    }
+            foreach ($group as $item) {
+                $hour = Carbon::parse($item->OPR_REPORTTIME)->hour;
+                if (in_array($hour, $jamRange)) {
+                    $jam[$hour]++;
                 }
+            }
 
-                return [
-                    'Loader'   => $first->LOD_LOADERID,
-                    'Operator' => $first->PERSONALNAME,
-                    'Shift'    => match ($first->OPR_SHIFTNO) {
-                        '6' => 'Siang',
-                        '7' => 'Malam',
-                        default => 'Tidak diketahui',
-                    },
-                    'Jam' => $jam,
-                ];
-            })
-            ->sortBy('Loader')
-            ->values();
+            return [
+                'Loader'   => $first->LOD_LOADERID,
+                'Operator' => $first->PERSONALNAME,
+                'Shift'    => match ($first->OPR_SHIFTNO) {
+                    '6' => 'Siang',
+                    '7' => 'Malam',
+                    default => 'Tidak diketahui',
+                },
+                'Jam' => $jam,
+            ];
+        })
+        ->sortBy('Loader')
+        ->values();
 
-        // Flatten
+    // Flatten: gunakan jamRange sebagai kunci untuk urutan yang benar
         return $data->map(fn($row) => array_merge(
             [$row['Loader'], $row['Operator'], $row['Shift']],
-            array_values($row['Jam'])
+            array_map(fn($h) => $row['Jam'][$h] ?? 0, array_merge(range(7,23), range(0,6)))
         ));
     }
 
+
     public function headings(): array
     {
-        $jamRange = match ($this->shift) {
-            '6' => range(7, 18),
-            '7' => array_merge(range(19, 23), range(0, 6)),
-            default => array_merge(range(7, 23), range(0, 6)),
-        };
+        $jamRange = array_merge(range(7, 23), range(0, 6));
 
-        return array_merge(['Loader', 'Operator', 'Shift', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '0', '1', '2', '3', '4', '5', '6']);
+        // Format 0–6 jadi "00".."06"
+        $jamRangeFormatted = array_map(fn($h) => $h < 10 ? '0'.$h : $h, $jamRange);
+
+        return array_merge(['Loader', 'Operator', 'Shift'], $jamRangeFormatted);
     }
-
     public function registerEvents(): array
     {
         return [
