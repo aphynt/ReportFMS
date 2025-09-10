@@ -38,7 +38,8 @@
                     <h6 class="f-w-600">Payload</h6>
                 </a>
                 <ul class="sidebar-submenu">
-                    <li> <a href="{{ route('payload.ex.index') }}">Excavator</a></li>
+                    <li> <a href="{{ route('payload.ex.summary') }}">Summary Excavator</a></li>
+                    <li> <a href="{{ route('payload.ex.oneHundredandFifteen') }}">Lebih dari 115</a></li>
                 </ul>
             </li>
             <li class="sidebar-list"> <i class="fa-solid fa-thumbtack"></i><a class="sidebar-link"
@@ -56,6 +57,7 @@
                     <li> <a href="{{ route('simpangEmpat.index') }}">KLKH Intersection (Simpang Empat)</a></li>
                 </ul>
             </li>
+
 
         </ul>
     </div>

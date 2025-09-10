@@ -58,7 +58,7 @@
                             </div>
                         </div>
 
-                        <div class="col-md-1 col-sm-6 col-12 p-2">
+                        <div class="col-md-1 col-sm-6 col-12">
 
                         </div>
 
@@ -200,7 +200,7 @@
                                         <th>Login Time</th>
                                         <th>Logout Time</th>
                                         <th>Ritation Tonnage</th>
-                                        <th>Category</th>
+                                        <th>Ritation Category</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
@@ -282,7 +282,7 @@
             $('#loadingSpinner').show();
 
             $.ajax({
-                url: "{{ route('payload.ex.api') }}",
+                url: "{{ route('payload.ex.apiSummary') }}",
                 type: 'GET',
                 dataType: 'json',
                 data: {
@@ -334,7 +334,7 @@
         });
 
         function loadExcel(tanggal, shift, ex) {
-            let url = "{{ route('payload.ex.excel') }}" + `?tanggal=${encodeURIComponent(tanggal)}&shift=${encodeURIComponent(shift)}&ex=${encodeURIComponent(ex)}`;
+            let url = "{{ route('payload.ex.summaryExcel') }}" + `?tanggal=${encodeURIComponent(tanggal)}&shift=${encodeURIComponent(shift)}&ex=${encodeURIComponent(ex)}`;
             window.location.href = url;
         }
 

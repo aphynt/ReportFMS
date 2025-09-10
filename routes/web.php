@@ -27,9 +27,13 @@ Route::group(['middleware' => ['auth']], function(){
     Route::get('/dashboard/index', [DashboardController::class, 'index'])->name('dashboard.index');
     Route::get('/dashboard/api', [DashboardController::class, 'api'])->name('dashboard.api');
 
-    Route::get('/payload/exa', [PayloadExcavatorController::class, 'index'])->name('payload.ex.index');
-    Route::get('/payload/api', [PayloadExcavatorController::class, 'api'])->name('payload.ex.api');
-    Route::get('/payload/excel', [PayloadExcavatorController::class, 'exportExcel'])->name('payload.ex.excel');
+    Route::get('/payload/ex/summary', [PayloadExcavatorController::class, 'summary'])->name('payload.ex.summary');
+    Route::get('/payload/ex/summary/api', [PayloadExcavatorController::class, 'apiSummary'])->name('payload.ex.apiSummary');
+    Route::get('/payload/ex/summary/excel', [PayloadExcavatorController::class, 'summaryExportExcel'])->name('payload.ex.summaryExcel');
+
+    Route::get('/payload/ex/oneHundredandFifteen', [PayloadExcavatorController::class, 'oneHundredandFifteen'])->name('payload.ex.oneHundredandFifteen');
+    Route::get('/payload/ex/oneHundredandFifteen/api', [PayloadExcavatorController::class, 'apiOneHundredandFifteen'])->name('payload.ex.apiOneHundredandFifteen');
+    Route::get('/payload/ex/oneHundredandFifteen/excel', [PayloadExcavatorController::class, 'excelOneHundredandFifteen'])->name('payload.ex.excelOneHundredandFifteen');
 
     Route::get('/klkh/loading-point', [KLKHLoadingPointController::class, 'index'])->name('loadingPoint.index');
     Route::get('/klkh/loading-point/api', [KLKHLoadingPointController::class, 'api'])->name('loadingPoint.api');
