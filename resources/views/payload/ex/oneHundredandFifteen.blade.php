@@ -1,6 +1,7 @@
 @include('layout.head', ['title' => 'Payload lebih dari 115'])
 @include('layout.header')
 @include('layout.sidebar')
+
 <style>
     .loading-char {
         font-weight: bold;
@@ -69,17 +70,16 @@
     <div class="container-fluid">
         <div class="page-title">
             <div class="row">
-                {{-- <form action="" method="GET"> --}}
-                {{-- <div class="row g-3"> --}}
                 <div class="col-md-2 col-sm-6 col-12">
-                    <label for="range-date-1" class="form-label">Tanggal</label>
+                    <label for="tanggal" class="form-label">Tanggal</label>
                     <div class="input-group">
-                        <input class="form-control" id="range-date" name="tanggal" type="date">
+                        <input class="form-control" id="datetime-local" name="tanggal" type="date"
+                            value="{{ date('Y-m-d') }}">
                     </div>
                 </div>
 
                 <div class="col-md-2 col-sm-6 col-12">
-                    <label for="range-date-3" class="form-label">Shift</label>
+                    <label for="select" class="form-label">Shift</label>
                     <select class="form-select" name="shift" id="select">
                         <option value="ALL">ALL</option>
                         <option value="Siang">Siang</option>
@@ -87,31 +87,25 @@
                     </select>
                 </div>
 
-                <div class="col-md-6 col-sm-6 col-12">
-
-                </div>
-
+                <div class="col-md-6 col-sm-6 col-12"></div>
 
                 <div class="col-md-1 col-sm-6 col-12 p-2">
-                    <label for="range-date-3" class="form-label">.</label>
+                    <label class="form-label">.</label>
                     <div class="input-group">
                         <button id="search" class="btn btn-primary w-100">Cari</button>
                     </div>
                 </div>
 
                 <div class="col-md-1 col-sm-6 col-12">
-                    <label for="range-date-3" class="form-label">.</label>
+                    <label class="form-label">.</label>
                     <div class="input-group">
                         <button id="excel" class="btn btn-info w-100">Export Excel</button>
                     </div>
                 </div>
-
-                {{-- </div> --}}
-                {{-- </form> --}}
-
             </div>
         </div>
     </div>
+
     <!-- Container-fluid starts-->
     <div class="container-fluid">
         <div class="row">
@@ -121,8 +115,6 @@
                         <h3>Payload lebih dari 115</h3>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                        </div>
                         <div id="loadingSpinner" style="display: none; text-align: center; margin: 20px;">
                             <div class="blinking-text">
                                 <span class="loading-char">L</span>
@@ -141,25 +133,13 @@
                         <div class="table-responsive">
                             <table class="display" id="basic-6">
                                 <thead>
-                                    <tr>
+                                    <tr id="dynamic-header">
                                         <th>Loader</th>
                                         <th>Operator</th>
                                         <th>Shift</th>
-                                        <th>7</th>
-                                        <th>8</th>
-                                        <th>9</th>
-                                        <th>10</th>
-                                        <th>11</th>
-                                        <th>12</th>
-                                        <th>13</th>
-                                        <th>14</th>
-                                        <th>15</th>
-                                        <th>16</th>
-                                        <th>17</th>
-                                        <th>18</th>
+                                        {{-- kolom jam ditambahkan via JS --}}
                                     </tr>
                                 </thead>
-
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -168,6 +148,8 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal Detail -->
     <div class="modal fade" id="detailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -192,16 +174,48 @@
             </div>
         </div>
     </div>
-
     <!-- Container-fluid Ends-->
 </div>
+
 @include('layout.footer')
+
 <script>
     $(document).ready(function () {
-        let table = $('#basic-6').DataTable();
+        let table;
+
+        function generateHeaders(shift) {
+            let headerRow = $('#dynamic-header');
+            headerRow.find('th:gt(2)').remove();
+
+            let jamRange = [];
+            jamRange = [...Array(17).keys()].map(i => i + 7).concat([...Array(7).keys()]);
+
+            jamRange.forEach(h => headerRow.append(`<th>${h}</th>`));
+
+            // 🔥 sebelum destroy datatable, pastikan modal ditutup
+            if ($('#detailsModal').hasClass('show')) {
+                $('#detailsModal').modal('hide');
+            }
+
+            // baru destroy datatable
+            if ($.fn.DataTable.isDataTable('#basic-6')) {
+                $('#basic-6').DataTable().destroy();
+                // $('#basic-6').DataTable().empty();
+            }
+
+            // re-init datatable
+            table = $('#basic-6').DataTable({
+                paging: false,
+                searching: false,
+                ordering: false,
+                info: false
+            });
+        }
+
 
         function loadTableData(tanggal, shift) {
             $('#loadingSpinner').show();
+            generateHeaders(shift);
 
             $.ajax({
                 url: "{{ route('payload.ex.apiOneHundredandFifteen') }}",
@@ -216,15 +230,14 @@
 
                     if (response.data && response.data.length > 0) {
                         let mappedData = response.data.map(item => {
-                            let row = [
-                                item.Loader,
-                                item.Operator,
-                                item.Shift
-                            ];
+                            let row = [item.Loader, item.Operator, item.Shift];
 
-                            for (let h = 7; h <= 18; h++) {
-                                let jamData = item.Jam[h];
-                                if (jamData.count > 0) {
+                            $('#dynamic-header th:gt(2)').each(function () {
+                                let jam = $(this).text().trim();
+                                let jamKey = Number(jam);
+                                let jamData = item.Jam[jamKey];
+
+                                if (jamData && jamData.count > 0) {
                                     row.push(`
                                         <a href="#"
                                         class="show-details"
@@ -235,18 +248,16 @@
                                 } else {
                                     row.push('');
                                 }
-                            }
+                            });
 
                             return row;
                         });
-
 
                         table.rows.add(mappedData).draw();
                     } else {
                         table.clear().draw();
                     }
                 },
-
                 error: function (xhr, status, error) {
                     console.error('AJAX Error:', error);
                 },
@@ -256,50 +267,48 @@
             });
         }
 
+
         $('#search').on('click', function (e) {
             e.preventDefault();
-
-            let tanggal = $('#range-date').val();
+            let tanggal = $('#datetime-local').val(); // ✅ betulin id
             let shift = $('#select').val();
+            console.log("test search");
 
             loadTableData(tanggal, shift);
         });
 
-        function loadExcel(tanggal, shift) {
-            let url = "{{ route('payload.ex.excelOneHundredandFifteen') }}" +
-                `?tanggal=${encodeURIComponent(tanggal)}&shift=${encodeURIComponent(shift)}`;
+        function loadExcel(tanggal, shift, ex) {
+            let url = "{{ route('payload.ex.excelOneHundredandFifteen') }}" + `?tanggal=${encodeURIComponent(tanggal)}&shift=${encodeURIComponent(shift)}`;
             window.location.href = url;
         }
 
         $('#excel').on('click', function (e) {
             e.preventDefault();
-            let tanggal = $('#range-date').val();
+            let tanggal = $('#datetime-local').val(); // ✅ betulin id
             let shift = $('#select').val();
             loadExcel(tanggal, shift);
         });
 
-        loadTableData('', '', '');
+        // Load default
+        loadTableData('{{ date('Y-m-d') }}', 'ALL');
     });
 
     $('#basic-6').on('click', '.show-details', function (e) {
         e.preventDefault();
-
         let details = $(this).data('details');
-        let loader = $(this).data('loader'); // ambil Loader
+        let loader = $(this).data('loader');
         let tbody = $('#detailsBody');
 
-        // ubah judul modal
         $('#detailsModal .modal-title').text('Detail HD di ' + loader);
-
         tbody.empty();
         details.forEach(d => {
             tbody.append(`<tr>
-                <td>${d.HD}</td>
-                <td>${d.Shift}</td>
-                <td>${d.Tonnage}</td>
-                <td>${d.Date}</td>
-                <td>${d.Time}</td>
-            </tr>`);
+            <td>${d.HD}</td>
+            <td>${d.Shift}</td>
+            <td>${d.Tonnage}</td>
+            <td>${d.Date}</td>
+            <td>${d.Time}</td>
+        </tr>`);
         });
 
         $('#detailsModal').modal('show');

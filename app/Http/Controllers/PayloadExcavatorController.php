@@ -154,51 +154,53 @@ class PayloadExcavatorController extends Controller
 
     public function apiOneHundredandFifteen(Request $request)
     {
-        $tanggalInput = $request->input('tanggal');
+        $tanggalInput = $request->input('tanggal', Carbon::now()->toDateString());
+        $shiftInput   = $request->input('shift', 'ALL');
 
-        $startDate = Carbon::now()->toDateString();
-        $endDate = $startDate;
-
-        if ($tanggalInput) {
-            if (str_contains($tanggalInput, 's/d')) {
-                [$startDate, $endDate] = array_map('trim', explode('s/d', $tanggalInput));
-            } else {
-                $startDate = trim($tanggalInput);
-                $endDate = $startDate;
-            }
-        }
-
-        $shiftInput = $request->input('shift');
+        // Mapping shift agar sesuai dengan tipe INT di SQL
         $shift = match ($shiftInput) {
-            'Siang' => '6',
-            'Malam' => '7',
-            'ALL', null => '',
-            default => '',
+            'Siang' => 6,
+            'Malam' => 7,
+            default => 0, // ALL
         };
 
+        // Gunakan date langsung tanpa startDate & endDate
+        $tanggal = Carbon::parse($tanggalInput)->format('Y-m-d');
+
+        // Tentukan range waktu berdasarkan shift
+        if ($shiftInput === 'Siang') {
+            $jamRange = range(7, 18);
+        } elseif ($shiftInput === 'Malam') {
+            $jamRange = array_merge(range(19, 23), range(0, 6));
+        } else { // ALL
+            $jamRange = array_merge(range(7, 23), range(0, 6));
+        }
+
+        $jamDefault = collect($jamRange)
+            ->mapWithKeys(fn($h) => [$h => ['count' => 0, 'details' => []]])
+            ->toArray();
 
         try {
-            $data = DB::select('SET NOCOUNT ON;EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @StartDate = ?, @endDate = ?, @Shift = ?',
-                [$startDate, $endDate, $shift]
+            $data = DB::select(
+                'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
+                [$tanggal, $shift]
             );
 
             $data = collect($data)
                 ->filter(fn($item) => $item->RIT_TONNAGE > 115)
                 ->groupBy(fn($item) => $item->LOD_LOADERID . '-' . $item->PERSONALNAME . '-' . $item->OPR_SHIFTNO)
-                ->map(function ($group) {
+                ->map(function ($group) use ($jamRange, $jamDefault) {
                     $first = $group->first();
-
-                    // siapkan jam 7-18
-                    $jam = collect(range(7, 18))->mapWithKeys(fn($h) => [$h => ['count' => 0, 'details' => []]])->toArray();
+                    $jam   = $jamDefault;
 
                     foreach ($group as $item) {
                         $hour = Carbon::parse($item->OPR_REPORTTIME)->hour;
-                        if ($hour >= 7 && $hour <= 18) {
+                        if (in_array($hour, $jamRange)) {
                             $jam[$hour]['count']++;
                             $jam[$hour]['details'][] = [
-                                'HD'   => $item->VHC_ID, // unit HD
+                                'HD'      => $item->VHC_ID,
                                 'Tonnage' => $item->RIT_TONNAGE,
-                                'Shift'    => match ($first->OPR_SHIFTNO) {
+                                'Shift'   => match ($first->OPR_SHIFTNO) {
                                     '6' => 'Siang',
                                     '7' => 'Malam',
                                     default => 'Tidak diketahui',
@@ -220,37 +222,28 @@ class PayloadExcavatorController extends Controller
                         'Jam' => $jam
                     ];
                 })
+                ->sortBy('Loader')
                 ->values();
 
-
             return response()->json([
-                'data' => $data,
+                'data'   => $data,
                 'status' => 'Success',
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'data' => [],
-                'status' => 'Error',
-                'message' => 'Terjadi kesalahan saat mengambil data.',
+                'data'    => [],
+                'status'  => 'Error',
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
 
+
+
+
     public function excelOneHundredandFifteen(Request $request)
     {
         $tanggalInput = $request->input('tanggal');
-
-        $startDate = Carbon::now()->toDateString();
-        $endDate = $startDate;
-
-        if ($tanggalInput) {
-            if (str_contains($tanggalInput, 'to')) {
-                [$startDate, $endDate] = array_map('trim', explode('to', $tanggalInput));
-            } else {
-                $startDate = trim($tanggalInput);
-                $endDate = $startDate;
-            }
-        }
 
         $shiftInput = $request->input('shift');
         $shift = match ($shiftInput) {
@@ -261,7 +254,7 @@ class PayloadExcavatorController extends Controller
         };
 
 
-        return Excel::download(new PayloadEXOneHundredandFifteenExport($startDate, $endDate, $shift), 'Payload lebih dari 115.xlsx');
+        return Excel::download(new PayloadEXOneHundredandFifteenExport($tanggalInput, $shift), 'Payload lebih dari 115.xlsx');
     }
 
 }

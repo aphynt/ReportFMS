@@ -13,55 +13,48 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents, WithHeadings, WithStyles
 {
-    protected $startDate;
-    protected $endDate;
+    protected $date;
     protected $shift;
 
-    public function __construct($tanggalInput, $shift)
+    public function __construct($tanggalInput, $shiftInput)
     {
-        if ($tanggalInput) {
-            if (str_contains($tanggalInput, 's/d')) {
-                [$start, $end] = array_map('trim', explode('s/d', $tanggalInput));
-                $this->startDate = Carbon::parse($start)->format('Y-m-d');
-                $this->endDate   = Carbon::parse($end)->format('Y-m-d');
-            } else {
-                $this->startDate = Carbon::parse(trim($tanggalInput))->format('Y-m-d');
-                $this->endDate   = $this->startDate;
-            }
-        } else {
-            $today = Carbon::now()->format('Y-m-d');
-            $this->startDate = $today;
-            $this->endDate   = $today;
-        }
+        $this->date = Carbon::parse($tanggalInput)->format('Y-m-d');
 
-        $this->shift = match ($shift) {
+        $this->shift = match ($shiftInput) {
             'Siang' => '6',
             'Malam' => '7',
-            'ALL', null => '',
-            default => '',
+            default => '', // ALL
         };
     }
 
     public function collection()
     {
+        // Ambil data dari SQL
         $data = DB::select(
-            'SET NOCOUNT ON;EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @StartDate = ?, @endDate = ?, @Shift = ?',
-            [$this->startDate, $this->endDate, $this->shift]
+            'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
+            [$this->date, $this->shift]
         );
 
-        // Filter > 115 ton dan group
+        // Tentukan jam range
+        $jamRange = match ($this->shift) {
+            '6' => range(7, 18),
+            '7' => array_merge(range(19, 23), range(0, 6)),
+            default => array_merge(range(7, 23), range(0, 6)),
+        };
+
+        $jamDefault = collect($jamRange)->mapWithKeys(fn($h) => [$h => 0])->toArray();
+
+        // Filter >115 ton dan group
         $data = collect($data)
             ->filter(fn($item) => $item->RIT_TONNAGE > 115)
             ->groupBy(fn($item) => $item->LOD_LOADERID.'-'.$item->PERSONALNAME.'-'.$item->OPR_SHIFTNO)
-            ->map(function ($group) {
+            ->map(function ($group) use ($jamRange, $jamDefault) {
                 $first = $group->first();
-
-                // Siapkan slot jam 07-18
-                $jam = collect(range(7, 18))->mapWithKeys(fn($h) => [$h => 0])->toArray();
+                $jam   = $jamDefault;
 
                 foreach ($group as $item) {
                     $hour = Carbon::parse($item->OPR_REPORTTIME)->hour;
-                    if ($hour >= 7 && $hour <= 18) {
+                    if (in_array($hour, $jamRange)) {
                         $jam[$hour]++;
                     }
                 }
@@ -74,22 +67,29 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
                         '7' => 'Malam',
                         default => 'Tidak diketahui',
                     },
-                    'Jam'      => $jam,
+                    'Jam' => $jam,
                 ];
             })
             ->sortBy('Loader')
             ->values();
 
-        // Flatten untuk Excel
-        return $data->map(function ($row) {
-            return array_merge([
-                $row['Loader'],
-                $row['Operator'],
-                $row['Shift'],
-            ], array_values($row['Jam']));
-        });
+        // Flatten
+        return $data->map(fn($row) => array_merge(
+            [$row['Loader'], $row['Operator'], $row['Shift']],
+            array_values($row['Jam'])
+        ));
     }
 
+    public function headings(): array
+    {
+        $jamRange = match ($this->shift) {
+            '6' => range(7, 18),
+            '7' => array_merge(range(19, 23), range(0, 6)),
+            default => array_merge(range(7, 23), range(0, 6)),
+        };
+
+        return array_merge(['Loader', 'Operator', 'Shift', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '0', '1', '2', '3', '4', '5', '6']);
+    }
 
     public function registerEvents(): array
     {
@@ -98,7 +98,7 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
                 $sheet = $event->sheet->getDelegate();
 
                 // Default lebar kolom
-                foreach (range('A', 'O') as $col) {
+                foreach (range('A', 'AA') as $col) {
                     $sheet->getColumnDimension($col)->setWidth(15);
                 }
 
@@ -111,7 +111,7 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
                 $range = "A1:{$highestColumn}{$highestRow}";
 
                  // Rata tengah untuk kolom D sampai O
-                $sheet->getStyle('D:O')->applyFromArray([
+                $sheet->getStyle('D:AA')->applyFromArray([
                     'alignment' => [
                         'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
                         'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
@@ -134,7 +134,7 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
     public function styles(Worksheet $sheet)
     {
         return [
-            'A1:O1' => [
+            'A1:AA1' => [
                 'font' => ['bold' => true],
                 'fill' => [
                     'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
@@ -150,16 +150,4 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
         ];
     }
 
-    public function headings(): array
-    {
-        $jamHeaders = [];
-        foreach (range(7, 18) as $h) {
-            $jamHeaders[] = $h;
-        }
-
-        return array_merge(
-            ['Loader', 'Operator', 'Shift'],
-            $jamHeaders
-        );
-    }
 }

@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/vendors/flag-icon.css" />
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/icons/css/uicons-regular-rounded.css" />
     <!-- iconly-icon-->
-    <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/iconly-icon.css" />
+    {{-- <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/iconly-icon.css" /> --}}
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/bulk-style.css" />
     <!-- iconly-icon-->
     <link rel="stylesheet" href="{{ asset('dashboard/assets') }}/css/themify.css" />
