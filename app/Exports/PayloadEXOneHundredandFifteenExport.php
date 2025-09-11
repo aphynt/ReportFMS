@@ -6,6 +6,7 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Events\AfterSheet;
+use Maatwebsite\Excel\Events\BeforeExport;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
@@ -195,6 +196,17 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
     public function registerEvents(): array
     {
         return [
+            BeforeExport::class => function(BeforeExport $event) {
+                $event->writer->getProperties()
+                    ->setCreator('Ahmad Fadillah')      // Author
+                    ->setLastModifiedBy('Ahmad Fadillah')
+                    ->setTitle('Laporan Payload Loader') // Title
+                    ->setDescription('Export data shift siang & malam')
+                    ->setSubject('Payload Report')
+                    ->setKeywords('Excel export, Payload, Loader')
+                    ->setCategory('Laporan');
+            },
+
             AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
 
