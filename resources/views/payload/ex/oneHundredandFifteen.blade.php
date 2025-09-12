@@ -222,7 +222,7 @@ $(document).ready(function() {
                 tbody.append(`<tr>
                     <td>${d.HD}</td>
                     <td>${d.Shift}</td>
-                    <td>${d.Tonnage}</td>
+                    <td>${Number(d.Tonnage).toFixed(1)}</td>
                     <td>${d.Date}</td>
                     <td>${d.Time}</td>
                 </tr>`);
