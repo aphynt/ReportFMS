@@ -11,6 +11,7 @@ use App\Http\Controllers\KLKHLumpurController;
 use App\Http\Controllers\KLKHOGSController;
 use App\Http\Controllers\KLKHSimpangEmpatController;
 use App\Http\Controllers\PayloadExcavatorController;
+use App\Http\Controllers\InspeksiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -26,6 +27,10 @@ Route::group(['middleware' => ['auth']], function(){
 
     Route::get('/dashboard/index', [DashboardController::class, 'index'])->name('dashboard.index');
     Route::get('/dashboard/api', [DashboardController::class, 'api'])->name('dashboard.api');
+
+    //Inspeksi
+    Route::get('/inspeksi/index', [InspeksiController::class, 'index'])->name('inspeksi.index');
+    Route::get('/inspeksi/api', [InspeksiController::class, 'api'])->name('inspeksi.api');
 
     Route::get('/payload/ex/summary', [PayloadExcavatorController::class, 'summary'])->name('payload.ex.summary');
     Route::get('/payload/ex/summary/api', [PayloadExcavatorController::class, 'apiSummary'])->name('payload.ex.apiSummary');

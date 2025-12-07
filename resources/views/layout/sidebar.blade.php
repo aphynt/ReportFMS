@@ -48,6 +48,7 @@
                     <h6 class="f-w-600">Temuan SAP</h6>
                 </a>
                 <ul class="sidebar-submenu">
+                    <li> <a href="{{ route('inspeksi.index') }}">Inspeksi</a></li>
                     <li> <a href="{{ route('loadingPoint.index') }}">KLKH Loading Point</a></li>
                     <li> <a href="{{ route('haulRoad.index') }}">KLKH Haul Road</a></li>
                     <li> <a href="{{ route('disposal.index') }}">KLKH Disposal/Dumping Point</a></li>

@@ -1,7 +1,7 @@
 <header class="page-header row">
     <div class="logo-wrapper d-flex align-items-center col-auto">
 
-            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/dashboard.png" alt="logo" width="150px"/>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/dashboard.png" alt="logo" width="120px"/>
                 <img class="dark-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" /></a>
         <a class="close-btn toggle-sidebar" href="javascript:void(0)">
             <i class="fi fi-rr-apps-add"></i>
@@ -9,8 +9,8 @@
     </div>
     <div class="page-main-header col">
         <div class="header-left">
-            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/sims.png" alt="logo" width="150px"/>
-            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" width="150px"/>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/sims.png" alt="logo" width="120px"/>
+            <a href="#"><img class="light-logo img-fluid" src="{{ asset('dashboard/assets') }}/images/logo/logo2.png" alt="logo" width="120px"/>
 
         </div>
         <div class="nav-right">

@@ -28487,7 +28487,7 @@ header a:hover .svg-color {
 header .page-main-header {
   display: flex;
   justify-content: space-between;
-  padding: 15px 30px;
+  padding: 5px 30px;
   align-items: center;
 }
 @media (max-width: 1199.98px) {
