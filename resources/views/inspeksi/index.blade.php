@@ -182,7 +182,29 @@
         return s;
     }
 
+    function isHeicFile(filename) {
+        if (!filename) return false;
+        return /\.(heic|heif)$/i.test(filename);
+    }
 
+    function renderImageOrButton(fileUrl) {
+        if (!fileUrl) return '-';
+
+        if (isHeicFile(fileUrl)) {
+            return `
+                <button class="btn btn-sm btn-primary"
+                    onclick="window.open('${fileUrl}', '_blank')">
+                    File HEIC, Lihat disini!
+                </button>
+            `;
+        }
+
+        return `
+            <img src="${fileUrl}"
+                style="max-width:150px; cursor:pointer; border-radius:4px;"
+                onclick="window.open('${fileUrl}', '_blank')" />
+        `;
+    }
 
     function loadTableData(tanggal, shift) {
         $('#loadingSpinner').show();
@@ -212,29 +234,28 @@
                             item.pic,
                             item.area,
                             item.temuan
-                            ? `<div class="multiline">${item.temuan}</div>`
-                            : '-',
+                                ? `<div class="multiline">${item.temuan}</div>`
+                                : '-',
+
+                            // ===== FILE TEMUAN =====
                             item.file_temuan
-                                ? `<img src="${item.file_temuan}"
-                                        style="max-width:150px; cursor:pointer; border-radius:4px;"
-                                        onclick="window.open('${item.file_temuan}', '_blank')" />`
+                                ? renderImageOrButton(item.file_temuan)
                                 : '-',
 
                             item.tingkat_risiko,
                             item.risiko
-                            ? `<div class="multiline">${item.risiko}</div>`
-                            : '-',
+                                ? `<div class="multiline">${item.risiko}</div>`
+                                : '-',
                             item.pengendalian
-                            ? `<div class="multiline">${item.pengendalian}</div>`
-                            : '-',
+                                ? `<div class="multiline">${item.pengendalian}</div>`
+                                : '-',
                             item.tindak_lanjut
-                            ? `<div class="multiline">${item.tindak_lanjut}</div>`
-                            : '-',
+                                ? `<div class="multiline">${item.tindak_lanjut}</div>`
+                                : '-',
 
+                            // ===== FILE TINDAK LANJUT =====
                             item.file_tindakLanjut
-                                ? `<img src="${item.file_tindakLanjut}"
-                                        style="max-width:150px; cursor:pointer; border-radius:4px;"
-                                        onclick="window.open('${item.file_tindakLanjut}', '_blank')" />`
+                                ? renderImageOrButton(item.file_tindakLanjut)
                                 : '-',
 
                             item.is_finish,
@@ -246,6 +267,7 @@
                     table.clear().draw();
                 }
             },
+
             error: function (xhr, status, error) {
                 console.error('AJAX Error:', error);
             },
