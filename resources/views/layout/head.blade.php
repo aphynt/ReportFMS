@@ -41,7 +41,7 @@
     <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
     {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
     <!-- SweetAlert2 CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    {{-- <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> --}}
 </head>
 
 <body>

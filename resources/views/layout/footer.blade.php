@@ -34,6 +34,9 @@
 <!-- apex-->
 <script src="{{ asset('dashboard/assets') }}/js/chart/apex-chart/apex-chart.js"></script>
 <script src="{{ asset('dashboard/assets') }}/js/chart/apex-chart/stock-prices.js"></script>
+
+<script src="{{ asset('dashboard/assets') }}/js/sweetalert/sweetalert2.min.js"></script>
+<script src="{{ asset('dashboard/assets') }}/js/sweetalert/sweetalert-custom.js"></script>
 <!-- scrollbar-->
 <script src="{{ asset('dashboard/assets') }}/js/scrollbar/simplebar.js"></script>
 <script src="{{ asset('dashboard/assets') }}/js/scrollbar/custom.js"></script>

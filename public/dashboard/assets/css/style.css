@@ -15775,7 +15775,7 @@ body.modal-open .select2-container--open .select2-dropdown {
 
 .card-header {
   background-color: var(--white);
-  padding: 20px;
+  /* padding: 20px; */
   border-bottom: 1px solid #e5e5e5;
   position: relative;
 }

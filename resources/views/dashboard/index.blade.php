@@ -66,7 +66,7 @@
             <!-- Card for the Earnings Trend Chart -->
             <div class="col-12">
                 <div class="card earning-card border-0 shadow-none m-0">
-                    <div class="card-header pb-2 pt-2 card-no-border">
+                    <div class="card-header pt-2 card-no-border mt-4">
                         <div class="header-top">
                             <h3 class="mb-0">Information</h3>
                         </div>

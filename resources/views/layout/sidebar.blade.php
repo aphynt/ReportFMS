@@ -58,7 +58,15 @@
                     <li> <a href="{{ route('simpangEmpat.index') }}">KLKH Intersection (Simpang Empat)</a></li>
                 </ul>
             </li>
-
+            <li class="sidebar-list"> <i class="fa-solid fa-thumbtack"></i><a class="sidebar-link"
+                    href="javascript:void(0)">
+                    <i class="fa-solid fi fi-rr-calendar-clock"></i>
+                    <h6 class="f-w-600">Plan</h6>
+                </a>
+                <ul class="sidebar-submenu">
+                    <li> <a href="{{ route('plan.ex') }}">Plan EX Per Jam</a></li>
+                </ul>
+            </li>
 
         </ul>
     </div>

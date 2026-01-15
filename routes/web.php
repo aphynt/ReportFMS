@@ -12,6 +12,7 @@ use App\Http\Controllers\KLKHOGSController;
 use App\Http\Controllers\KLKHSimpangEmpatController;
 use App\Http\Controllers\PayloadExcavatorController;
 use App\Http\Controllers\InspeksiController;
+use App\Http\Controllers\PlanController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -67,5 +68,11 @@ Route::group(['middleware' => ['auth']], function(){
     Route::get('/klkh/simpang-empat', [KLKHSimpangEmpatController::class, 'index'])->name('simpangEmpat.index');
     Route::get('/klkh/simpang-empat/api', [KLKHSimpangEmpatController::class, 'api'])->name('simpangEmpat.api');
     Route::get('/klkh/simpang-empat/excel', [KLKHSimpangEmpatController::class, 'exportExcel'])->name('simpangEmpat.excel');
+
+    Route::get('/plan/ex', [PlanController::class, 'ex'])->name('plan.ex');
+    Route::get('/plan/ex/api', [PlanController::class, 'api_ex'])->name('plan.ex.api');
+    Route::post('/plan/ex/store', [PlanController::class, 'ex_store'])->name('plan.ex.store');
+    Route::post('/plan/ex/update', [PlanController::class, 'ex_update'])->name('plan.ex.update');
+    Route::post('/plan/ex/delete/{id}', [PlanController::class, 'ex_delete'])->name('plan.ex.delete');
 
 });

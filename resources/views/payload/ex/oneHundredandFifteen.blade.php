@@ -1,39 +1,14 @@
 @include('layout.head', ['title' => 'Payload lebih dari 115'])
 @include('layout.header')
 @include('layout.sidebar')
-
-<style>
-.loading-char {
-    font-weight: bold;
-    font-size: 1.5rem;
-    color: #007bff;
-    opacity: 0.2;
-    animation: blink 1.5s infinite;
-    display: inline-block;
-}
-.loading-char:nth-child(1) { animation-delay: 0s; }
-.loading-char:nth-child(2) { animation-delay: 0.1s; }
-.loading-char:nth-child(3) { animation-delay: 0.2s; }
-.loading-char:nth-child(4) { animation-delay: 0.3s; }
-.loading-char:nth-child(5) { animation-delay: 0.4s; }
-.loading-char:nth-child(6) { animation-delay: 0.5s; }
-.loading-char:nth-child(7) { animation-delay: 0.6s; }
-.loading-char:nth-child(8) { animation-delay: 0.7s; }
-.loading-char:nth-child(9) { animation-delay: 0.8s; }
-.loading-char:nth-child(10) { animation-delay: 0.9s; }
-
-@keyframes blink {
-    0%, 100% { opacity: 0.2; }
-    50% { opacity: 1; }
-}
-</style>
+@include('layout.styleSpinner')
 
 <div class="page-body p-3">
     <div class="container-fluid">
         <div class="row">
             <div class="col-sm-12">
                 <div class="card">
-                    <div class="card-header card-no-border pb-3 d-flex align-items-center justify-content-between flex-wrap">
+                    <div class="card-header card-no-border d-flex align-items-center justify-content-between flex-wrap mt-4">
                         <h3 class="mb-0 me-3">Payload lebih dari 115</h3>
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <div style="min-width: 150px;">
