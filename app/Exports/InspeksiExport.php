@@ -255,7 +255,7 @@ class InspeksiExport implements
             $drawing->setName($name);
             $drawing->setDescription($name);
             $drawing->setPath($tempFile);
-            $drawing->setHeight(80);
+            $drawing->setHeight(90);
             $drawing->setCoordinates($cell);
             $drawing->setOffsetX(5);
             $drawing->setOffsetY(5);
