@@ -11,6 +11,7 @@ use Maatwebsite\Excel\Concerns\WithCustomStartCell;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
 
 class InspeksiExport implements
     FromCollection,
@@ -24,9 +25,6 @@ class InspeksiExport implements
     public function __construct($data)
     {
         $this->data = $data;
-
-        set_time_limit(0);
-        ini_set('max_execution_time', 0);
     }
 
     public function startCell(): string
@@ -219,53 +217,31 @@ class InspeksiExport implements
         ];
     }
 
-    protected function addImageFromUrl(
-        Worksheet $sheet,
-        string $url,
-        string $cell,
-        string $name
-    ): void {
+    protected function addImageFromUrl(Worksheet $sheet, string $url, string $cell, string $name): void
+    {
         try {
-            // Folder temp khusus export
-            $tempDir = storage_path('app/temp-export-images');
-
-            if (!is_dir($tempDir)) {
-                mkdir($tempDir, 0755, true);
-            }
-
-            // Nama file unik
-            $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
-            $tempFile  = $tempDir.'/'.uniqid('img_').'.'.$extension;
-
-            // Download image (TANPA load ke memory besar)
-            $stream = fopen($url, 'r');
-            if (!$stream) {
+            $imageData = @file_get_contents($url);
+            if ($imageData === false) {
                 return;
             }
 
-            file_put_contents($tempFile, $stream);
-            fclose($stream);
-
-            if (!file_exists($tempFile)) {
+            $image = @imagecreatefromstring($imageData);
+            if ($image === false) {
                 return;
             }
 
-            // Pakai FILE BASED DRAWING (HEMAT RAM)
-            $drawing = new Drawing();
+            $drawing = new MemoryDrawing();
             $drawing->setName($name);
             $drawing->setDescription($name);
-            $drawing->setPath($tempFile);
+            $drawing->setImageResource($image);
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_JPEG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_DEFAULT);
             $drawing->setHeight(80);
             $drawing->setCoordinates($cell);
             $drawing->setOffsetX(5);
             $drawing->setOffsetY(5);
             $drawing->setWorksheet($sheet);
-
         } catch (\Throwable $e) {
-            // optional log
-            // \Log::error($e->getMessage());
         }
     }
-
-
 }
