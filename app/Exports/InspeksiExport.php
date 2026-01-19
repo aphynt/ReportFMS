@@ -131,13 +131,13 @@ class InspeksiExport implements
                 $sheet->getColumnDimension('C')->setWidth(18);
                 $sheet->getColumnDimension('D')->setWidth(25);
                 $sheet->getColumnDimension('E')->setWidth(35);
-                $sheet->getColumnDimension('F')->setWidth(22);
+                $sheet->getColumnDimension('F')->setWidth(35);
                 $sheet->getColumnDimension('G')->setWidth(14);
                 $sheet->getColumnDimension('H')->setWidth(35);
                 $sheet->getColumnDimension('I')->setWidth(14);
                 $sheet->getColumnDimension('J')->setWidth(18);
                 $sheet->getColumnDimension('K')->setWidth(14);
-                $sheet->getColumnDimension('L')->setWidth(22);
+                $sheet->getColumnDimension('L')->setWidth(35);
                 $sheet->getColumnDimension('M')->setWidth(10);
 
                 $highestRow    = $sheet->getHighestRow() ?: 4;
