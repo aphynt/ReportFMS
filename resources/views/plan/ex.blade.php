@@ -22,9 +22,11 @@
                             <div style="min-width: 90px;">
                                 <button id="search" class="btn btn-primary w-100">Cari</button>
                             </div>
+                            @if (Auth::user()->role_id = '1')
                             <div style="min-width: 90px;">
                                 <button class="btn btn-success" id="btn-open-create">Tambah</button>
                             </div>
+                            @endif
                             @include('plan.modal.create')
                         </div>
                     </div>
@@ -65,8 +67,10 @@
 
                             </table>
                         </div>
+                        @if (Auth::user()->role_id = '1')
                         @include('plan.modal.edit')
                         @include('plan.modal.delete')
+                        @endif
                     </div>
                 </div>
             </div>

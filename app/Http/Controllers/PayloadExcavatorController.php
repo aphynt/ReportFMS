@@ -81,6 +81,7 @@ class PayloadExcavatorController extends Controller
                     'RIT_TONNAGE'      => number_format((float) $item->RIT_TONNAGE, 1),
                     'TONNAGE_CATEGORY' => match ($item->TONNAGE_CATEGORY) {
                         'LESS_THAN_85'               => 'Kurang dari 85',
+                        'LESS_THAN_90'               => 'Kurang dari 90',
                         'LESS_THAN_100'              => 'Kurang dari 100',
                         'BETWEEN_100_AND_115'        => 'Antara 100 dan 115',
                         'GREATER_THAN_115'           => 'Lebih dari 115',
