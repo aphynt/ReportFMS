@@ -95,12 +95,13 @@ class PayloadEXExport implements FromCollection, WithEvents, WithHeadings, WithS
                 $item->LOGOUT_TIME    ? Carbon::parse($item->LOGOUT_TIME)->format('Y-m-d H:i')    : '-',
                 number_format((float) $item->RIT_TONNAGE, 1),
                 $item->TONNAGE_CATEGORY =>  match ($item->TONNAGE_CATEGORY) {
-                    'LESS_THAN_85'                  => 'Kurang dari 85',
-                    'LESS_THAN_100'                 => 'Kurang dari 100',
-                    'BETWEEN_100_AND_115'           => 'Antara 100 dan 115',
-                    'GREATER_THAN_115'              => 'Lebih dari 115',
-                    'GREATER_THAN_OR_EQUAL_120'     => 'Lebih dari 120',
-                    default                         => 'Tidak diketahui',
+                    'LESS_THAN_85'               => 'Kurang dari 85',
+                    'LESS_THAN_90'               => 'Kurang dari 90',
+                    'LESS_THAN_100'              => 'Kurang dari 100',
+                    'BETWEEN_100_AND_115'        => 'Antara 100 dan 115',
+                    'GREATER_THAN_115'           => 'Lebih dari 115',
+                    'GREATER_THAN_OR_EQUAL_120' => 'Lebih dari 120',
+                    default                      => 'Tidak diketahui',
                 }
             ];
         });
