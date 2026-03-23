@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class OPRPlanEX extends Model
 {
     //
-    protected $table = 'OPR_PLAN_EX';
+    protected $table = 'prd_opr_plan_ex';
     public $timestamps = false;
 
     protected $guarded = [];

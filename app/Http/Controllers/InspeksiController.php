@@ -43,10 +43,10 @@ class InspeksiController extends Controller
         };
 
         try {
-            $data = DB::table('SAP_REPORT as sr')
+            $data = DB::table('prd_sap_report as sr')
                 ->leftJoin('users as us', 'sr.foreman_id', 'us.id')
-                ->leftJoin('REF_SHIFT as sh', 'sr.shift', 'sh.id')
-                ->leftJoin('REF_AREA as ar', 'sr.area', 'ar.id')
+                ->leftJoin('ref_shift as sh', 'sr.shift', 'sh.id')
+                ->leftJoin('ref_region as ar', 'sr.area', 'ar.id')
                 ->select(
                     'sr.id',
                     'sr.uuid',

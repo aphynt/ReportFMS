@@ -60,7 +60,7 @@ class PayloadExcavatorController extends Controller
         }
 
         try {
-            $data = DB::select('SET NOCOUNT ON;EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX @StartDate = ?, @endDate = ?, @EX_IDs = ?, @Shift = ?',
+            $data = DB::connection('focus_reporting')->select('SET NOCOUNT ON;EXEC dbo.GET_PAYLOAD_2023_2024_EX @StartDate = ?, @endDate = ?, @EX_IDs = ?, @Shift = ?',
                 [$startDate, $endDate, $ex, $shift]
             );
 
@@ -182,8 +182,8 @@ class PayloadExcavatorController extends Controller
             ->toArray();
 
         try {
-            $data = DB::select(
-                'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
+            $data = DB::connection('focus_reporting')->select(
+                'SET NOCOUNT ON; EXEC dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
                 [$tanggal, $shift]
             );
 

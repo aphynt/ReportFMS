@@ -32,7 +32,7 @@ class KLKHLoadingPointController extends Controller
         }
 
         try {
-            $data = DB::select('EXEC DAILY.dbo.APP_GET_REPORT_KLKH_LOADING_POINT @StartDate = ?, @EndDate = ?',
+            $data = DB::select('EXEC DAILY_FOREMAN.dbo.APP_GET_REPORT_KLKH_LOADING_POINT @StartDate = ?, @EndDate = ?',
                 [$startDate, $endDate]
             );
 

@@ -31,7 +31,7 @@ class KLKHSimpangEmpatController extends Controller
         }
 
         try {
-            $data = DB::select('EXEC DAILY.dbo.APP_GET_REPORT_KLKH_SIMPANG_EMPAT @StartDate = ?, @EndDate = ?',
+            $data = DB::select('EXEC DAILY_REPORT.dbo.APP_GET_REPORT_KLKH_SIMPANG_EMPAT @StartDate = ?, @EndDate = ?',
                 [$startDate, $endDate]
             );
 
