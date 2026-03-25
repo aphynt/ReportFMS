@@ -72,7 +72,7 @@ class PayloadEXExport implements FromCollection, WithEvents, WithHeadings, WithS
 
     public function collection()
     {
-        $data = DB::select('SET NOCOUNT ON;EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX @StartDate = ?, @endDate = ?, @EX_IDs = ?, @Shift = ?', [
+        $data = DB::connection('focus_reporting')->select('SET NOCOUNT ON;EXEC dbo.GET_PAYLOAD_2023_2024_EX @StartDate = ?, @endDate = ?, @EX_IDs = ?, @Shift = ?', [
             $this->startDate,
             $this->endDate,
             $this->ex,

@@ -52,9 +52,9 @@ class PayloadEXOneHundredandFifteenExport implements FromCollection, WithEvents,
     }
     public function collection()
     {
-        // ambil data dari stored proc
-        $data = DB::select(
-            'SET NOCOUNT ON; EXEC DAILY.dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
+
+        $data = DB::connection('focus_reporting')->select(
+            'SET NOCOUNT ON; EXEC dbo.GET_PAYLOAD_2023_2024_EX_ONEHUNDRENANDFIFTEEN @Date = ?, @Shift = ?',
             [$this->date, $this->shift]
         );
 
