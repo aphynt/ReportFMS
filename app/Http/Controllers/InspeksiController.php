@@ -46,7 +46,6 @@ class InspeksiController extends Controller
             $data = DB::table('prd_sap_report as sr')
                 ->leftJoin('users as us', 'sr.foreman_id', 'us.id')
                 ->leftJoin('ref_shift as sh', 'sr.shift', 'sh.id')
-                ->leftJoin('ref_region as ar', 'sr.area', 'ar.id')
                 ->select(
                     'sr.id',
                     'sr.uuid',
@@ -56,7 +55,7 @@ class InspeksiController extends Controller
                     'sh.keterangan as shift',
                     'us.nik as nik_pic',
                     'us.name as pic',
-                    'ar.keterangan as area',
+                    'sr.area',
                     'sr.temuan',
                     'sr.risiko',
                     'sr.pengendalian',
