@@ -417,6 +417,7 @@ figure {
 img,
 svg {
   vertical-align: middle;
+  max-width: 30px;
 }
 
 table {
@@ -16631,7 +16632,7 @@ th {
   color: var(--dark);
 }
 .table [class*=bg-] {
-  color: var(--white);
+  color: var(--black);
 }
 .table .bg-light {
   color: var(--theme-body-font-color);

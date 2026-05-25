@@ -97,6 +97,21 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        'p2h' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => '10.10.2.5',
+            'port' => '5432',
+            'database' => 'focus',
+            'username' => 'postgres',
+            'password' => 'masterkey',
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

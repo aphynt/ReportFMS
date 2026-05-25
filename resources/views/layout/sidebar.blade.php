@@ -67,6 +67,13 @@
                     <li> <a href="{{ route('plan.ex') }}">Plan EX Per Jam</a></li>
                 </ul>
             </li>
+            <li class="sidebar-list"> <i class="fa-solid fa-thumbtack"></i>
+                <a class="sidebar-link"
+                    href="{{ route('p2h.index') }}">
+                    <i class="fi fi-rr-clipboard-list"></i>
+                    <h6 class="f-w-600">Prestart Checklist</h6>
+                </a>
+            </li>
 
         </ul>
     </div>
