@@ -105,33 +105,72 @@ class P2HController extends Controller
             foreach ($units as $jenisUnit => $shifts) {
                 foreach ($shifts as $shift => $items) {
 
-                    $unitsInChecklist = $items->pluck('vhc_id')->map(fn($v) => strtoupper(trim($v)))->unique()->toArray();
+                    $unitsInChecklist = $items->pluck('vhc_id')
+                        ->map(fn($v) => strtoupper(trim($v)))
+                        ->unique()
+                        ->toArray();
 
-                    $loginUnitsOfGroup = array_filter($appLoginUnits, function($v) use ($jenisUnit) {
-                        $prefix = strtoupper(substr($v, 0, 2));
-                        return in_array($jenisUnit, ['EX', 'HD', 'MG', 'BD', 'WT', 'FT'])
-                            ? $prefix === $jenisUnit
-                            : !in_array($prefix, ['EX', 'HD', 'MG', 'BD', 'WT', 'FT']);
-                    });
+                    $loginUnitsOfGroup = array_values(array_filter(
+                        $appLoginUnits,
+                        function ($v) use ($jenisUnit) {
+                            $prefix = strtoupper(substr(trim($v), 0, 2));
 
-                    $listBelumP2H = array_values(array_diff($unitsInChecklist, $loginUnitsOfGroup));
+                            return in_array($jenisUnit, ['EX', 'HD', 'MG', 'BD', 'WT', 'FT'])
+                                ? $prefix === $jenisUnit
+                                : !in_array($prefix, ['EX', 'HD', 'MG', 'BD', 'WT', 'FT']);
+                        }
+                    ));
 
-                    $unitOperasi = count($unitsInChecklist);
+                    $unitOperasi = count($loginUnitsOfGroup);
+
+                    $listBelumP2H = array_values(
+                        array_diff($loginUnitsOfGroup, $unitsInChecklist)
+                    );
+
                     $belumP2H = count($listBelumP2H);
-                    $sudahP2H = max(0, $unitOperasi - $belumP2H);
 
-                    $unitDefect = $items->where('temuan', '>', 0)->unique('vhc_id');
+                    $sudahP2H = count(
+                        array_intersect($loginUnitsOfGroup, $unitsInChecklist)
+                    );
+
+                    $unitDefect = $items
+                        ->where('temuan', '>', 0)
+                        ->pluck('vhc_id')
+                        ->map(fn ($v) => strtoupper(trim($v)))
+                        ->unique();
+
                     $totalTemuan = $unitDefect->count();
 
-                    $mekanikSudah = $unitDefect->where('mekanik_verified', true)->count();
-                    $mekanikBelum = $unitDefect->where('mekanik_verified', false)->count();
+                    $unitMekanikSudah = $items
+                        ->filter(fn ($item) =>
+                            $item['temuan'] > 0 &&
+                            $item['mekanik_verified'] === true
+                        )
+                        ->pluck('vhc_id')
+                        ->map(fn ($v) => strtoupper(trim($v)))
+                        ->unique();
 
-                    $pengawasSudah = $items->where('foreman_verified', true)->unique('vhc_id')->count();
+                    $mekanikSudah = $unitDefect
+                        ->intersect($unitMekanikSudah)
+                        ->count();
 
-                    if ($pengawasSudah > $sudahP2H) {
-                        $pengawasSudah = $sudahP2H;
-                    }
-                    $pengawasBelum = max(0, $sudahP2H - $pengawasSudah);
+                    $mekanikBelum = $unitDefect->count() - $mekanikSudah;
+
+                    $unitSudahP2H = collect(
+                        array_intersect($loginUnitsOfGroup, $unitsInChecklist)
+                    );
+
+                    $unitPengawasSudah = $items
+                        ->filter(fn ($item) => $item['foreman_verified'] === true)
+                        ->pluck('vhc_id')
+                        ->map(fn ($v) => strtoupper(trim($v)))
+                        ->unique();
+
+                    $pengawasSudah = $unitSudahP2H
+                        ->intersect($unitPengawasSudah)
+                        ->count();
+
+                    $pengawasBelum = $sudahP2H - $pengawasSudah;
                     // --------------------------------------------------------
 
                     $summaryResult[] = [

@@ -76,25 +76,51 @@
 </div>
 
 <div class="modal fade" id="modalBelumP2H" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white py-2">
-                <h6 class="modal-title font-weight-bold"><i class="fa fa-bus"></i> Daftar Unit Belum P2H</h6>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header bg-gradient bg-danger text-white">
+                <div>
+                    <h5 class="modal-title mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Unit Belum P2H
+                    </h5>
+                    <small class="opacity-75">
+                        Daftar unit yang sudah login tetapi belum melakukan P2H
+                    </small>
+                </div>
+
+                <button type="button"
+                    class="btn-close btn-close-white"
+                    data-bs-dismiss="modal">
+                </button>
             </div>
+
             <div class="modal-body p-0">
-                <div class="table-responsive" style="max-height: 400px;">
-                    <table class="table table-striped table-hover text-center mb-0">
-                        <thead class="table-light sticky-top">
+
+                <div class="table-responsive" style="max-height:450px;">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-danger sticky-top">
                             <tr>
-                                <th>No</th>
-                                <th>Nomor Lambung (VHC ID)</th>
+                                <th width="60">#</th>
+                                <th>Nomor Unit</th>
                             </tr>
                         </thead>
-                        <tbody id="tbody-detail-belum"></tbody>
+
+                        <tbody id="tbody-detail-belum">
+                        </tbody>
                     </table>
                 </div>
+
             </div>
+
+            <div class="modal-footer py-2">
+                <button class="btn btn-secondary"
+                    data-bs-dismiss="modal">
+                    Tutup
+                </button>
+            </div>
+
         </div>
     </div>
 </div>
