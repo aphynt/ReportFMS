@@ -14,6 +14,7 @@ use App\Http\Controllers\PayloadExcavatorController;
 use App\Http\Controllers\InspeksiController;
 use App\Http\Controllers\PlanController;
 use App\Http\Controllers\P2HController;
+use App\Http\Controllers\UnitBreakdownController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -79,4 +80,7 @@ Route::group(['middleware' => ['auth']], function(){
     Route::get('/p2h', [P2HController::class, 'index'])->name('p2h.index');
     Route::get('/p2h/api', [P2hController::class, 'api'])->name('p2h.api');
 
+    Route::get('/unit/breakdown', [UnitBreakdownController::class, 'breakdown'])->name('unit.breakdown');
+    Route::get('/breakdown-hourly/data',[UnitBreakdownController::class,'getData'])->name('breakdown.data');
+    Route::post('/breakdown-hourly/update',[UnitBreakdownController::class,'update'])->name('breakdown.update');
 });
