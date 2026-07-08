@@ -24,6 +24,12 @@ class UnitBreakdownController extends Controller
             $tanggal=date('Y-m-d');
         }
 
+        $startPagi = Carbon::parse($tanggal)->setTime(7,0,0);
+
+        $endMalam = Carbon::parse($tanggal)
+                        ->addDay()
+                        ->setTime(6,59,59);
+
         $rows = DB::connection('focus_reporting')
                 ->table('RPT_UNIT_STATUS_BREAKDOWN_HOURLY')
                 ->select(
@@ -34,7 +40,10 @@ class UnitBreakdownController extends Controller
                     'TOTAL_DOWN',
                     'ACTUAL_BREAKDOWN'
                 )
-                ->whereDate('SNAPSHOT_TIME',$tanggal)
+                ->whereBetween('SNAPSHOT_TIME',[
+                    $startPagi,
+                    $endMalam
+                ])
                 ->orderBy('SNAPSHOT_TIME')
                 ->get();
 
@@ -47,13 +56,16 @@ class UnitBreakdownController extends Controller
         foreach($rows as $r)
         {
 
-            $hour = Carbon::parse($r->SNAPSHOT_TIME)->format('H');
+            $key = Carbon::parse($r->SNAPSHOT_TIME)->format('Y-m-d H');
 
-            $hours[$hour]=$hour;
+            $hours[$key]=[
+                'date'=>Carbon::parse($r->SNAPSHOT_TIME)->format('Y-m-d'),
+                'hour'=>Carbon::parse($r->SNAPSHOT_TIME)->format('H')
+            ];
 
             $types[$r->VHC_TYPEDESC]=$r->VHC_TYPEDESC;
 
-            $data[$r->VHC_TYPEDESC][$hour] = [
+            $data[$r->VHC_TYPEDESC][$key] = [
                 'id'     => $r->ID,
                 'actual' => $r->ACTUAL_BREAKDOWN ?? $r->TOTAL_DOWN,
                 'total'  => $r->TOTAL_DOWN,
@@ -63,6 +75,8 @@ class UnitBreakdownController extends Controller
         }
 
         ksort($hours);
+
+        $types = array_values($types);
 
         sort($types);
 

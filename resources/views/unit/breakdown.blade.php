@@ -180,9 +180,17 @@ function renderTable(res){
 
     let html = "";
 
-    let pagi = res.hours.filter(h => h >= '07' && h <= '18');
+    let pagi = res.hours.filter(h=>{
 
-    let malam = res.hours.filter(h => h >= '19' || h <= '06');
+        return h.hour >= '07' && h.hour <= '18';
+
+    });
+
+    let malam = res.hours.filter(h=>{
+
+        return h.hour >= '19' || h.hour <= '06';
+
+    });
 
     html += buildShift('PAGI', pagi, res);
 
@@ -296,7 +304,11 @@ function buildShift(title,hours,res){
 
     hours.forEach(function(h){
 
-        html += "<th colspan='2'>"+h+":00</th>";
+        html += "<th colspan='2'>";
+
+        html += h.hour+":00";
+
+        html += "</th>";
 
     });
 
@@ -333,13 +345,13 @@ function buildShift(title,hours,res){
             let totalDown = "";
             let id = "";
 
-            if(res.data[type] && res.data[type][h]){
+            if(res.data[type] && res.data[type][h.date+" "+h.hour]){
 
-                id = res.data[type][h].id;
+                id = res.data[type][h.date+" "+h.hour].id;
 
-                actual = res.data[type][h].actual ?? "";
+                actual = res.data[type][h.date+" "+h.hour].actual ?? "";
 
-                totalDown = res.data[type][h].total ?? "";
+                totalDown = res.data[type][h.date+" "+h.hour].total ?? "";
 
                 if(actual !== ""){
 
