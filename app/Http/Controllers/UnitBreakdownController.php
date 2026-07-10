@@ -76,9 +76,30 @@ class UnitBreakdownController extends Controller
 
         ksort($hours);
 
+        $customOrder = [
+            'Loader',
+            'Hauler',
+            'Grader',
+            'Dozer',
+            'Water Truck',
+            'Excavator Support',
+            'Fuel Truck',
+            'General Support',
+        ];
+
         $types = array_values($types);
 
-        sort($types);
+        usort($types, function ($a, $b) use ($customOrder) {
+            $posA = array_search($a, $customOrder);
+            $posB = array_search($b, $customOrder);
+
+            // Jika ada tipe yang tidak ada di customOrder,
+            // letakkan di paling bawah
+            $posA = $posA === false ? PHP_INT_MAX : $posA;
+            $posB = $posB === false ? PHP_INT_MAX : $posB;
+
+            return $posA <=> $posB;
+        });
 
         return response()->json([
             'hours'=>array_values($hours),
