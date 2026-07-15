@@ -302,12 +302,20 @@ function buildShift(title,hours,res){
 
     html += "<th rowspan='2'>Equipment</th>";
 
+    // hours.forEach(function(h){
+
+    //     html += "<th colspan='2'>";
+
+    //     html += h.hour+":00";
+
+    //     html += "</th>";
+
+    // });
+
     hours.forEach(function(h){
 
-        html += "<th colspan='2'>";
-
+        html += "<th>";
         html += h.hour+":00";
-
         html += "</th>";
 
     });
@@ -321,7 +329,7 @@ function buildShift(title,hours,res){
     hours.forEach(function(){
 
         html += "<th class='actual-col'>Actual</th>";
-        html += "<th class='total-col'>Total</th>";
+        // html += "<th class='total-col'>Total</th>";
 
     });
 
@@ -342,7 +350,7 @@ function buildShift(title,hours,res){
         hours.forEach(function(h){
 
             let actual = "";
-            let totalDown = "";
+            // let totalDown = "";
             let id = "";
 
             if(res.data[type] && res.data[type][h.date+" "+h.hour]){
@@ -351,7 +359,7 @@ function buildShift(title,hours,res){
 
                 actual = res.data[type][h.date+" "+h.hour].actual ?? "";
 
-                totalDown = res.data[type][h.date+" "+h.hour].total ?? "";
+                // totalDown = res.data[type][h.date+" "+h.hour].total ?? "";
 
                 if(actual !== ""){
 
@@ -367,9 +375,9 @@ function buildShift(title,hours,res){
             html += actual;
             html += "</td>";
 
-            html += "<td class='total-col'>";
-            html += totalDown;
-            html += "</td>";
+            // html += "<td class='total-col'>";
+            // html += totalDown;
+            // html += "</td>";
 
         });
 
