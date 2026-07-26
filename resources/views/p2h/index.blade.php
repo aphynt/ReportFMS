@@ -18,7 +18,7 @@
                 <div class="col-md-1">
                     <label>Shift</label>
                     <select id="filter_shift" class="form-control">
-                        <option value="">Semua Shift</option>
+                        {{-- <option value="">Semua Shift</option> --}}
                         <option value="6">Siang</option>
                         <option value="7">Malam</option>
                     </select>
