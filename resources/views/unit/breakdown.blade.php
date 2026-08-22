@@ -300,7 +300,7 @@ function buildShift(title,hours,res){
 
     html += "<tr>";
 
-    html += "<th rowspan='2'>Equipment</th>";
+    html += "<th>Equipment</th>";
 
     // hours.forEach(function(h){
 
@@ -320,18 +320,18 @@ function buildShift(title,hours,res){
 
     });
 
-    html += "<th rowspan='2'>Average</th>";
+    html += "<th>Average</th>";
 
     html += "</tr>";
 
     html += "<tr>";
 
-    hours.forEach(function(){
+    // hours.forEach(function(){
 
-        html += "<th class='actual-col'>Actual</th>";
-        // html += "<th class='total-col'>Total</th>";
+    //     html += "<th class='actual-col'>Actual</th>";
+    //     // html += "<th class='total-col'>Total</th>";
 
-    });
+    // });
 
     html += "</tr>";
 
