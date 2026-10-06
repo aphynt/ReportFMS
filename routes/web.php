@@ -12,6 +12,7 @@ use App\Http\Controllers\KLKHOGSController;
 use App\Http\Controllers\KLKHSimpangEmpatController;
 use App\Http\Controllers\PayloadExcavatorController;
 use App\Http\Controllers\InspeksiController;
+use App\Http\Controllers\OperationalStatusController;
 use App\Http\Controllers\PlanController;
 use App\Http\Controllers\P2HController;
 use App\Http\Controllers\UnitBreakdownController;
@@ -83,4 +84,12 @@ Route::group(['middleware' => ['auth']], function(){
     Route::get('/unit/breakdown', [UnitBreakdownController::class, 'breakdown'])->name('unit.breakdown');
     Route::get('/breakdown-hourly/data',[UnitBreakdownController::class,'getData'])->name('breakdown.data');
     Route::post('/breakdown-hourly/update',[UnitBreakdownController::class,'update'])->name('breakdown.update');
+
+    Route::get('/operational-status', [OperationalStatusController::class, 'index'])->name('operational-status.index');
+    Route::post('/operational-status', [OperationalStatusController::class, 'store'])->name('operational-status.store');
+    Route::get('/operational-status/history/{id}/edit', [OperationalStatusController::class, 'editHistory'])->name('operational-status.edit-history');
+    Route::get('/operational-status/whatsapp-histories', [OperationalStatusController::class, 'whatsappHistories'])->name('operational-status.whatsapp-histories');
+    Route::post('/operational-status/whatsapp-preview', [OperationalStatusController::class, 'whatsappPreview'])->name('operational-status.whatsapp-preview');
+    Route::post('/operational-status/whatsapp-report-preview', [OperationalStatusController::class, 'whatsappReportPreview'])->name('operational-status.whatsapp-report-preview');
+
 });

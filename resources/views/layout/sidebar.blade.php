@@ -81,6 +81,13 @@
                     <h6 class="f-w-600">Unit Breakdown</h6>
                 </a>
             </li>
+            <li class="sidebar-list">
+                <i class="fa-solid fa-thumbtack"></i>
+                <a class="sidebar-link" href="{{ route('operational-status.index') }}">
+                    <i class="fi fi-rr-dashboard-monitor"></i>
+                    <h6 class="f-w-600">Operational Status</h6>
+                </a>
+            </li>
 
         </ul>
     </div>
