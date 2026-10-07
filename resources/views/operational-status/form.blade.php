@@ -47,6 +47,9 @@
             </div>
             @endif
             <span class="ops-version">{{ !empty($history) ? 'V'.$history->VERSION : 'New Report' }}</span>
+            @if(!empty($continuedFrom) && empty($history))
+                <span class="ops-continue"><i class="fas fa-forward"></i> Continue {{ $continuedFrom['hour_start'] }} - {{ $continuedFrom['hour_end'] }} · V{{ $continuedFrom['version'] }}</span>
+            @endif
         </div>
     </div>
 
@@ -68,14 +71,23 @@
                     </select></div>
             </div>
             <div class="ops-field">
-                <label>Jam Mulai</label>
-                <div class="ops-control-wrap"><i class="far fa-clock"></i><input type="time" name="hour_start"
-                        id="hour_start" value="{{ $hourStart }}"></div>
+                <label>Jam Laporan</label>
+                <div class="ops-control-wrap"><i class="far fa-clock"></i>
+                    <select name="hour_start" id="hour_start">
+                        @foreach($shiftHours as $hour)
+                            @php
+                                $startValue = str_pad($hour, 2, '0', STR_PAD_LEFT).':00';
+                                $endValue = str_pad(($hour + 1) % 24, 2, '0', STR_PAD_LEFT).':00';
+                            @endphp
+                            <option value="{{ $startValue }}" {{ $hourStart === $startValue ? 'selected' : '' }}>{{ $startValue }} - {{ $endValue }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="ops-field">
                 <label>Jam Selesai</label>
-                <div class="ops-control-wrap"><i class="far fa-clock"></i><input type="time" name="hour_end"
-                        id="hour_end" value="{{ $hourEnd }}"></div>
+                <div class="ops-control-wrap"><i class="far fa-clock"></i><input type="text" id="hour_end_display" value="{{ $hourEnd }}" readonly></div>
+                <input type="hidden" name="hour_end" id="hour_end" value="{{ $hourEnd }}">
             </div>
             <button type="button" id="btnReload" class="ops-button ops-button-primary"><i
                     class="fas fa-search"></i>Tampilkan</button>
@@ -497,6 +509,19 @@
         color: #2858a5;
         font-size: 11px;
         font-weight: 700
+    }
+
+    .ops-continue {
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: #eaf8f1;
+        color: #137a51;
+        font-size: 10px;
+        font-weight: 700
+    }
+
+    .ops-continue i {
+        margin-right: 5px
     }
 
     .ops-filter,
@@ -1156,6 +1181,13 @@
 });
 $(function(){
     let waBlob=null,waFilename='operational-status.png',waCaption='Operational Status';
+    function padHour(h){return String(h).padStart(2,'0')+':00'}
+    function getShiftHours(shift){return String(shift)==='6'?[7,8,9,10,11,12,13,14,15,16,17,18]:[19,20,21,22,23,0,1,2,3,4,5,6]}
+    function updateHourEnd(){const start=$('#hour_start').val();if(!start)return;const h=parseInt(start.substring(0,2),10);const end=padHour((h+1)%24);$('#hour_end').val(end);$('#hour_end_display').val(end)}
+    function rebuildHourOptions(){const shift=$('#shift_no').val(),hours=getShiftHours(shift),current=$('#hour_start').val();let html='';hours.forEach(h=>{const start=padHour(h),end=padHour((h+1)%24);html+=`<option value="${start}">${start} - ${end}</option>`});$('#hour_start').html(html);if(hours.map(padHour).includes(current))$('#hour_start').val(current);else $('#hour_start').val(padHour(hours[0]));updateHourEnd()}
+    $('#shift_no').on('change',rebuildHourOptions);
+    $('#hour_start').on('change',updateHourEnd);
+    updateHourEnd();
     $('#btnReload').on('click',function(){const u=new URL("{{ route('operational-status.index') }}",window.location.origin);u.searchParams.set('date',$('#report_date').val());u.searchParams.set('shift',$('#shift_no').val());u.searchParams.set('hour_start',$('#hour_start').val());u.searchParams.set('hour_end',$('#hour_end').val());window.location.href=u.toString()});
     $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
     $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
