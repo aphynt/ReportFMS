@@ -26,9 +26,9 @@
                 $obDistanceValues = collect($report['hourly'])
                     ->pluck('avg_distance_ob')
                     ->filter(fn($v) => is_numeric($v) && (float)$v > 0);
-                $obDistanceAvg = $obDistanceValues->count() ? round($obDistanceValues->avg(), 1) : null;
+                $obDistanceAvg = $obDistanceValues->count() ? round($obDistanceValues->avg(), 2) : null;
             @endphp
-            <tr class="total-row"><td>Total</td><td>{{ $obDistanceAvg !== null ? number_format($obDistanceAvg,1,'.','') : '' }}</td><td>{{ $report['totals']['ob_hd'] }}</td><td>{{ $report['totals']['ob_trip'] }}</td><td>{{ number_format($report['totals']['ob_volume'],0,',','.') }}</td><td>{{ $report['totals']['mud_hd'] }}</td><td>{{ $report['totals']['mud_trip'] }}</td><td>{{ number_format($report['totals']['mud_volume'],0,',','.') }}</td><td></td></tr>
+            <tr class="total-row"><td>Total</td><td>{{ $obDistanceAvg !== null ? number_format($obDistanceAvg,2,'.','') : '' }}</td><td>{{ $report['totals']['ob_hd'] }}</td><td>{{ $report['totals']['ob_trip'] }}</td><td>{{ number_format($report['totals']['ob_volume'],0,',','.') }}</td><td>{{ $report['totals']['mud_hd'] }}</td><td>{{ $report['totals']['mud_trip'] }}</td><td>{{ number_format($report['totals']['mud_volume'],0,',','.') }}</td><td></td></tr>
         </tbody>
     </table>
 
@@ -42,7 +42,7 @@
                 @foreach($items as $idx=>$row)
                 <tr>
                     @if($idx===0)<td rowspan="{{ $items->count() }}">{{ $material }}</td><td rowspan="{{ $items->count() }}">{{ $area }}</td>@endif
-                    <td>EX{{ $row['ex'] }}</td><td>{{ number_format($row['distance'],1) }}</td><td>{{ $row['dt_plan'] }}</td><td>{{ $row['dt_actual'] }}</td><td>{{ is_numeric($row['pdty_plan']) ? number_format((float)$row['pdty_plan'],0,',','.') : $row['pdty_plan'] }}</td><td>{{ is_numeric($row['pdty_actual']) ? number_format((float)$row['pdty_actual'],0,',','.') : $row['pdty_actual'] }}</td><td>{{ $row['wd'] }}</td><td class="left">{{ $row['remark'] }}</td>
+                    <td>EX{{ $row['ex'] }}</td><td>{{ number_format((float)$row['distance'],2,'.','') }}</td><td>{{ $row['dt_plan'] }}</td><td>{{ $row['dt_actual'] }}</td><td>{{ is_numeric($row['pdty_plan']) ? number_format((float)$row['pdty_plan'],0,',','.') : $row['pdty_plan'] }}</td><td>{{ is_numeric($row['pdty_actual']) ? number_format((float)$row['pdty_actual'],0,',','.') : $row['pdty_actual'] }}</td><td>{{ $row['wd'] }}</td><td class="left">{{ $row['remark'] }}</td>
                 </tr>
                 @endforeach
             @endforeach
