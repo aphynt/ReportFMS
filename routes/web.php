@@ -91,5 +91,6 @@ Route::group(['middleware' => ['auth']], function(){
     Route::get('/operational-status/whatsapp-histories', [OperationalStatusController::class, 'whatsappHistories'])->name('operational-status.whatsapp-histories');
     Route::post('/operational-status/whatsapp-preview', [OperationalStatusController::class, 'whatsappPreview'])->name('operational-status.whatsapp-preview');
     Route::post('/operational-status/whatsapp-report-preview', [OperationalStatusController::class, 'whatsappReportPreview'])->name('operational-status.whatsapp-report-preview');
+    Route::post('/operational-status/whatsapp-send-image', [OperationalStatusController::class, 'sendWhatsappImage'])->name('operational-status.whatsapp-send-image');
 
 });

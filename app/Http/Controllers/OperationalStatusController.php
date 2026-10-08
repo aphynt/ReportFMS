@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 class OperationalStatusController extends Controller
@@ -242,13 +243,13 @@ class OperationalStatusController extends Controller
         }
 
         $unitStatus = [
-            'EX Big' => ['pop' => null, 'ready' => null, 'down' => null],
-            'HD OB' => ['pop' => null, 'ready' => null, 'down' => null],
-            'HD MV' => ['pop' => null, 'ready' => null, 'down' => null],
-            'MG' => ['pop' => null, 'ready' => null, 'down' => null],
-            'BD' => ['pop' => null, 'ready' => null, 'down' => null],
-            'WT' => ['pop' => null, 'ready' => null, 'down' => null],
-            'EX Small' => ['pop' => null, 'ready' => null, 'down' => null],
+            'EX Big' => ['pop' => 14, 'ready' => 14, 'down' => 0],
+            'HD OB' => ['pop' => 108, 'ready' => 108, 'down' => 0],
+            'HD MV' => ['pop' => 9, 'ready' => 9, 'down' => 0],
+            'MG' => ['pop' => 21, 'ready' => 21, 'down' => 0],
+            'BD' => ['pop' => 22, 'ready' => 22, 'down' => 0],
+            'WT' => ['pop' => 12, 'ready' => 12, 'down' => 0],
+            'EX Small' => ['pop' => 11, 'ready' => 11, 'down' => 0],
         ];
 
         $operatorStatus = [
@@ -276,6 +277,13 @@ class OperationalStatusController extends Controller
                 ];
             }
         }
+
+        foreach ($unitStatus as $type => &$unit) {
+            $pop = is_numeric($unit['pop'] ?? null) ? (int)$unit['pop'] : 0;
+            $down = is_numeric($unit['down'] ?? null) ? (int)$unit['down'] : 0;
+            $unit['ready'] = max(0, $pop - $down);
+        }
+        unset($unit);
 
         $operatorStatus = array_replace($operatorStatus, $carrySource['operator'] ?? []);
         $notes = $carrySource['notes'] ?? '';
@@ -328,6 +336,24 @@ class OperationalStatusController extends Controller
                 'hour_end' => 'Jam selesai harus satu jam setelah jam mulai.',
             ]);
         }
+
+        $units = collect($request->input('units', []))
+            ->map(function ($unit) {
+                $pop = (int)($unit['pop'] ?? 0);
+                $down = (int)($unit['down'] ?? 0);
+
+                $unit['pop'] = $pop;
+                $unit['down'] = $down;
+                $unit['ready'] = max(0, $pop - $down);
+
+                return $unit;
+            })
+            ->values()
+            ->all();
+
+        $request->merge([
+            'units' => $units,
+        ]);
 
         $model = new OperationalStatusHistory();
 
@@ -422,6 +448,65 @@ class OperationalStatusController extends Controller
             'filename' => 'operational-status-'.$report['report_date'].'-shift-'.$report['shift_no'].'.png',
             'caption' => 'Operational Status '.$report['date_label'].' - '.$report['shift_name'].' - '.$report['latest_hour'],
         ]);
+    }
+
+    public function sendWhatsappImage(Request $request)
+    {
+        $request->validate([
+            'photo' => 'required|file|mimes:png,jpg,jpeg,webp|max:15360',
+            'caption' => 'nullable|string|max:3000',
+        ]);
+
+        $apiUrl = config('services.whatsapp.api_url');
+        $apiKey = config('services.whatsapp.api_key');
+        $groupId = config('services.whatsapp.group_id');
+
+        if (!$apiUrl || !$apiKey || !$groupId) {
+            return response()->json([
+                'message' => 'Konfigurasi WhatsApp API belum lengkap.',
+            ], 500);
+        }
+
+        $photo = $request->file('photo');
+
+        try {
+            $response = Http::timeout(60)
+                ->connectTimeout(10)
+                ->withHeaders([
+                    'X-API-Key' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->attach(
+                    'photo',
+                    file_get_contents($photo->getRealPath()),
+                    $photo->getClientOriginalName(),
+                    ['Content-Type' => $photo->getMimeType() ?: 'image/png']
+                )
+                ->post($apiUrl, [
+                    'groupId' => $groupId,
+                    'caption' => $request->input('caption', ''),
+                ]);
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'message' => 'WhatsApp API menolak pengiriman gambar.',
+                    'upstream_status' => $response->status(),
+                    'upstream_response' => $response->json() ?: $response->body(),
+                ], 502);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Report berhasil dikirim ke grup WhatsApp.',
+                'data' => $response->json() ?: $response->body(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Tidak dapat terhubung ke WhatsApp API.',
+            ], 502);
+        }
     }
 
     public function whatsappPreview(Request $request)

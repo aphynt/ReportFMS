@@ -260,14 +260,10 @@
                         <tbody>
                             @foreach(['EX Big','HD OB','HD MV','MG','BD','WT','EX Small'] as $i => $type)
                             <tr>
-                                <td><strong>{{ $type }}</strong><input type="hidden" name="units[{{ $i }}][type]"
-                                        value="{{ $type }}"></td>
-                                <td><input type="number" class="ops-input manual center" name="units[{{ $i }}][pop]"
-                                        value="{{ $unitStatus[$type]['pop'] ?? '' }}"></td>
-                                <td><input type="number" class="ops-input manual center" name="units[{{ $i }}][ready]"
-                                        value="{{ $unitStatus[$type]['ready'] ?? '' }}"></td>
-                                <td><input type="number" class="ops-input manual center" name="units[{{ $i }}][down]"
-                                        value="{{ $unitStatus[$type]['down'] ?? '' }}"></td>
+                                <td><strong>{{ $type }}</strong><input type="hidden" name="units[{{ $i }}][type]" value="{{ $type }}"></td>
+                                <td><input type="number" class="ops-input manual center unit-pop" data-row="{{ $i }}" name="units[{{ $i }}][pop]" value="{{ $unitStatus[$type]['pop'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input center unit-ready" id="unit_ready_{{ $i }}" name="units[{{ $i }}][ready]" value="{{ $unitStatus[$type]['ready'] ?? 0 }}" readonly></td>
+                                <td><input type="number" class="ops-input manual center unit-down" data-row="{{ $i }}" name="units[{{ $i }}][down]" value="{{ $unitStatus[$type]['down'] ?? 0 }}" min="0"></td>
                             </tr>
                             @endforeach
                         </tbody>
@@ -1191,6 +1187,9 @@ $(function(){
     $('#btnReload').on('click',function(){const u=new URL("{{ route('operational-status.index') }}",window.location.origin);u.searchParams.set('date',$('#report_date').val());u.searchParams.set('shift',$('#shift_no').val());u.searchParams.set('hour_start',$('#hour_start').val());u.searchParams.set('hour_end',$('#hour_end').val());window.location.href=u.toString()});
     $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
     $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
+    function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
+    $(document).on('input change','.unit-pop,.unit-down',function(){calculateReady($(this).data('row'))});
+    $('.unit-pop').each(function(){calculateReady($(this).data('row'))});
     function updateCompletion(){const f=$('.required-manual');if(!f.length){$('#completionFill').css('width','100%');$('#completionText').text('100%');return}let n=0;f.each(function(){if($(this).val()!=='')n++});const p=Math.round(n/f.length*100);$('#completionFill').css('width',p+'%');$('#completionText').text(p+'%')}
     $(document).on('input change','.required-manual',updateCompletion);updateCompletion();
     $('#btnWhatsapp').on('click',function(){$('#modalWhatsapp').modal('show');loadWhatsappHistory()});
@@ -1198,9 +1197,39 @@ $(function(){
     function selectedIds(){return $('.wa-history-check:checked').map(function(){return parseInt($(this).val())}).get()}
     async function buildImagePreview(){const ids=selectedIds();$('#waSelectedInfo').text(ids.length+' data dipilih');$('#waSelectAll').prop('checked',$('.wa-history-check').length>0&&ids.length===$('.wa-history-check').length);waBlob=null;$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',true);if(!ids.length){$('#waPreviewStage').html('<div class="wa-empty">Pilih minimal satu historical.</div>');return}if(typeof html2canvas==='undefined'){showMessage('html2canvas belum termuat. Pastikan koneksi internet atau simpan library html2canvas secara lokal.');return}$('#waPreviewStage').html('<div class="wa-generating"><i class="fas fa-spinner fa-spin"></i>Membuat gambar report...</div>');$.ajax({url:"{{ route('operational-status.whatsapp-report-preview') }}",type:'POST',data:{_token:$('input[name="_token"]').first().val(),ids:ids,include_summary:$('#waIncludeSummary').is(':checked')?1:0}}).done(async function(res){try{$('#waRenderTarget').html(res.html||'');waFilename=res.filename||waFilename;waCaption=res.caption||waCaption;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await new Promise(r=>setTimeout(r,60));const el=document.getElementById('ops-report-image');if(!el)throw new Error('Template report tidak ditemukan.');const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,windowWidth:1000});const dataUrl=canvas.toDataURL('image/png');waBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png',1));$('#waPreviewStage').html(`<img src="${dataUrl}" alt="Preview Operational Status">`);$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',!waBlob)}catch(e){console.error(e);showMessage('Gagal membuat gambar report.')}}).fail(showAjaxError)}
     function downloadImage(){if(!waBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(waBlob);a.download=waFilename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
-    async function shareImage(){if(!waBlob)return;const file=new File([waBlob],waFilename,{type:'image/png'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({title:'Operational Status',text:waCaption,files:[file]});return}catch(e){if(e.name==='AbortError')return}}downloadImage();window.open('https://wa.me/?text='+encodeURIComponent(waCaption),'_blank');showMessage('Gambar sudah didownload. Jika WhatsApp tidak menerima lampiran otomatis, pilih file gambar yang baru didownload.','info')}
+    async function sendWhatsappImage(){
+        if(!waBlob){
+            showMessage('Gambar report belum tersedia.');
+            return;
+        }
+
+        const btn=$('#btnSendWhatsapp');
+        const originalHtml=btn.html();
+
+        btn.prop('disabled',true).html('<i class="fas fa-spinner fa-spin"></i> Mengirim...');
+
+        const formData=new FormData();
+        formData.append('_token',$('input[name="_token"]').first().val());
+        formData.append('caption',waCaption||'');
+        formData.append('photo',waBlob,waFilename||'operational-status.png');
+
+        $.ajax({
+            url:"{{ route('operational-status.whatsapp-send-image') }}",
+            type:'POST',
+            data:formData,
+            processData:false,
+            contentType:false,
+            timeout:90000
+        }).done(function(res){
+            showMessage(res.message||'Report berhasil dikirim ke grup WhatsApp.','success');
+        }).fail(function(xhr){
+            showAjaxError(xhr);
+        }).always(function(){
+            btn.prop('disabled',!waBlob).html(originalHtml);
+        });
+    }
     function showAjaxError(xhr){showMessage(xhr.responseJSON&&xhr.responseJSON.message?xhr.responseJSON.message:'Terjadi kesalahan saat memproses report.')}
-    function showMessage(msg,type='error'){if(window.toastr){type==='info'?toastr.info(msg):toastr.error(msg)}else alert(msg)}
-    $(document).on('change','.wa-history-check',buildImagePreview);$('#waIncludeSummary').on('change',buildImagePreview);$('#waSelectAll').on('change',function(){$('.wa-history-check').prop('checked',this.checked);buildImagePreview()});$('#btnRefreshPreview').on('click',buildImagePreview);$('#btnDownloadWhatsapp').on('click',downloadImage);$('#btnSendWhatsapp').on('click',shareImage);
+    function showMessage(msg,type='error'){if(window.toastr){if(type==='success')toastr.success(msg);else if(type==='info')toastr.info(msg);else toastr.error(msg)}else alert(msg)}
+    $(document).on('change','.wa-history-check',buildImagePreview);$('#waIncludeSummary').on('change',buildImagePreview);$('#waSelectAll').on('change',function(){$('.wa-history-check').prop('checked',this.checked);buildImagePreview()});$('#btnRefreshPreview').on('click',buildImagePreview);$('#btnDownloadWhatsapp').on('click',downloadImage);$('#btnSendWhatsapp').on('click',sendWhatsappImage);
 });
 </script>
