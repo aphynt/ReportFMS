@@ -59,6 +59,8 @@ class OperationalStatusController extends Controller
         $carrySaved = [];
         $continuedFrom = null;
 
+
+
         if (!$history) {
             $carryHistory = $latestShiftHistories
                 ->filter(fn($row) => $this->shiftPosition((int)substr($row->HOUR_START, 0, 2), $shiftNo) < $this->shiftPosition($startHour, $shiftNo))
@@ -92,6 +94,7 @@ class OperationalStatusController extends Controller
                     'PLAN_PRODUCTION_CUM' => (float)($row['plan_production_cum'] ?? 0),
                     'ACH_CUM' => (float)($row['ach_cum'] ?? 0),
                     'PRODUCTION_MD' => (float)($row['production_md'] ?? 0),
+                    'AVG_DISTANCE_OB' => (float)($row['avg_distance_ob'] ?? 0),
                     'CREATED_TIME' => $row['created_time'] ?? null,
                     'SAVED_REMARK' => $row['remark'] ?? '',
                 ];
@@ -127,6 +130,16 @@ class OperationalStatusController extends Controller
         }
 
         $hourly = $this->filterHourlyByShift($hourly, $shiftNo);
+
+        $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
+        $hourly = $hourly->map(function ($row) use ($avgDistanceObByHour) {
+            $hourKey = str_pad((int)$row->HOUR, 2, '0', STR_PAD_LEFT);
+            $row->AVG_DISTANCE_OB = isset($avgDistanceObByHour[$hourKey])
+                ? (float)$avgDistanceObByHour[$hourKey]
+                : (float)($row->AVG_DISTANCE_OB ?? 0);
+
+            return $row;
+        });
 
         if ($history && !empty($saved['details'])) {
             $details = collect($saved['details'])->map(function ($row) {
@@ -253,15 +266,13 @@ class OperationalStatusController extends Controller
         ];
 
         $operatorStatus = [
-            'planned' => null,
-            'present' => null,
-            'operation' => null,
-            'spare' => null,
-            'izin' => null,
-            'sakit' => null,
-            'mangkir' => null,
-            'sk' => null,
-            'emergency' => null,
+            'EX Big' => ['hadir' => 16, 'operation' => 14, 'spare' => 2],
+            'HD OB' => ['hadir' => 93, 'operation' => 90, 'spare' => 3],
+            'HD MV' => ['hadir' => 12, 'operation' => 10, 'spare' => 2],
+            'MG' => ['hadir' => 19, 'operation' => 18, 'spare' => 1],
+            'BD' => ['hadir' => 8, 'operation' => 7, 'spare' => 1],
+            'WT' => ['hadir' => 4, 'operation' => 4, 'spare' => 0],
+            'EX Small' => ['hadir' => 7, 'operation' => 7, 'spare' => 0],
         ];
 
         $notes = '';
@@ -285,7 +296,18 @@ class OperationalStatusController extends Controller
         }
         unset($unit);
 
-        $operatorStatus = array_replace($operatorStatus, $carrySource['operator'] ?? []);
+        foreach ($carrySource['operators'] ?? [] as $operator) {
+            $type = trim((string)($operator['type'] ?? ''));
+
+            if ($type !== '' && array_key_exists($type, $operatorStatus)) {
+                $operatorStatus[$type] = [
+                    'hadir' => is_numeric($operator['hadir'] ?? null) ? (int)$operator['hadir'] : 0,
+                    'operation' => is_numeric($operator['operation'] ?? null) ? (int)$operator['operation'] : 0,
+                    'spare' => is_numeric($operator['spare'] ?? null) ? (int)$operator['spare'] : 0,
+                ];
+            }
+        }
+
         $notes = $carrySource['notes'] ?? '';
         $issues = $carrySource['issues'] ?? '';
 
@@ -351,8 +373,22 @@ class OperationalStatusController extends Controller
             ->values()
             ->all();
 
+        $operators = collect($request->input('operators', []))
+            ->map(function ($operator) {
+                return [
+                    'type' => trim((string)($operator['type'] ?? '')),
+                    'hadir' => max(0, (int)($operator['hadir'] ?? 0)),
+                    'operation' => max(0, (int)($operator['operation'] ?? 0)),
+                    'spare' => max(0, (int)($operator['spare'] ?? 0)),
+                ];
+            })
+            ->filter(fn($operator) => $operator['type'] !== '')
+            ->values()
+            ->all();
+
         $request->merge([
             'units' => $units,
+            'operators' => $operators,
         ]);
 
         $model = new OperationalStatusHistory();
@@ -640,11 +676,59 @@ class OperationalStatusController extends Controller
         return $ratio > 0 && $ratio <= 35.5 ? 'MUD' : 'OB';
     }
 
+    private function hourlyAverageObDistance(string $reportDate, int $shiftNo): array
+    {
+        $mudLoaderIds = DB::connection('focus_reporting')
+            ->table('REALTIME.MATCHING_FLEET')
+            ->select('VHC_ID', 'DISPOSAL')
+            ->whereNotNull('VHC_ID')
+            ->where('VHC_ID', '<>', '')
+            ->get()
+            ->filter(function ($row) {
+                $disposal = strtoupper(trim((string)($row->DISPOSAL ?? '')));
+
+                return Str::contains($disposal, ['MUD', 'LUMPUR']);
+            })
+            ->pluck('VHC_ID')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = DB::connection('focus')
+            ->table('dbo.PRD_RITATION')
+            ->selectRaw('DATEPART(HOUR, OPR_REPORTTIME) AS HOUR_KEY')
+            ->selectRaw('ROUND(AVG(CAST(RIT_HAULDISTANCE AS FLOAT)) / 1000.0, 2) AS AVG_DISTANCE_OB')
+            ->where('OPR_SHIFTDATE', $reportDate)
+            ->where('OPR_SHIFTNO', $shiftNo)
+            ->whereNotNull('LOD_LOADERID')
+            ->whereNotNull('RIT_HAULDISTANCE')
+            ->where('RIT_HAULDISTANCE', '>=', 500);
+
+        if (!empty($mudLoaderIds)) {
+            $query->whereNotIn('LOD_LOADERID', $mudLoaderIds);
+        }
+
+        return $query
+            ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME)')
+            ->get()
+            ->mapWithKeys(function ($row) {
+                $hourKey = str_pad((int)$row->HOUR_KEY, 2, '0', STR_PAD_LEFT);
+
+                return [
+                    $hourKey => round((float)($row->AVG_DISTANCE_OB ?? 0), 2),
+                ];
+            })
+            ->all();
+    }
+
     private function buildReportData($rows, bool $includeSummary): array
     {
         $first = $rows->first();
         $last = $rows->last();
         $shiftNo = (int)$first->SHIFT_NO;
+        $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
+        $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
         $hourlyRows = [];
 
         foreach ($rows as $history) {
@@ -662,6 +746,9 @@ class OperationalStatusController extends Controller
                 'ob_hd' => (int)$obDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
                 'ob_trip' => (int)$obDetails->sum(fn($d) => (int)($d['trip_actual'] ?? 0)),
                 'ob_volume' => (float)($hourData['production'] ?? $obDetails->sum(fn($d) => (float)($d['pdty_actual'] ?? 0))),
+                'avg_distance_ob' => isset($hourData['avg_distance_ob'])
+                    ? (float)$hourData['avg_distance_ob']
+                    : (float)($avgDistanceObByHour[$hourKey] ?? 0),
                 'mud_hd' => (int)$mudDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
                 'mud_trip' => (int)$mudDetails->sum(fn($d) => (int)($d['trip_actual'] ?? 0)),
                 'mud_volume' => (float)($hourData['production_md'] ?? $mudDetails->sum(fn($d) => (float)($d['pdty_actual'] ?? 0))),
@@ -695,17 +782,36 @@ class OperationalStatusController extends Controller
             'down' => $u['down'] ?? '-',
         ])->values();
 
-        $operator = array_replace([
-            'planned' => '-',
-            'present' => '-',
-            'operation' => '-',
-            'spare' => '-',
-            'izin' => '-',
-            'sakit' => '-',
-            'mangkir' => '-',
-            'sk' => '-',
-            'emergency' => '-',
-        ], $lastPayload['operator'] ?? []);
+        $operatorDefaults = [
+            'EX Big' => ['hadir' => 16, 'operation' => 14, 'spare' => 2],
+            'HD OB' => ['hadir' => 93, 'operation' => 90, 'spare' => 3],
+            'HD MV' => ['hadir' => 12, 'operation' => 10, 'spare' => 2],
+            'MG' => ['hadir' => 19, 'operation' => 18, 'spare' => 1],
+            'BD' => ['hadir' => 8, 'operation' => 7, 'spare' => 1],
+            'WT' => ['hadir' => 4, 'operation' => 4, 'spare' => 0],
+            'EX Small' => ['hadir' => 7, 'operation' => 7, 'spare' => 0],
+        ];
+
+        foreach ($lastPayload['operators'] ?? [] as $operatorRow) {
+            $type = trim((string)($operatorRow['type'] ?? ''));
+
+            if ($type !== '' && array_key_exists($type, $operatorDefaults)) {
+                $operatorDefaults[$type] = [
+                    'hadir' => is_numeric($operatorRow['hadir'] ?? null) ? (int)$operatorRow['hadir'] : 0,
+                    'operation' => is_numeric($operatorRow['operation'] ?? null) ? (int)$operatorRow['operation'] : 0,
+                    'spare' => is_numeric($operatorRow['spare'] ?? null) ? (int)$operatorRow['spare'] : 0,
+                ];
+            }
+        }
+
+        $operators = collect($operatorDefaults)->map(function ($values, $type) {
+            return [
+                'type' => $type,
+                'hadir' => $values['hadir'],
+                'operation' => $values['operation'],
+                'spare' => $values['spare'],
+            ];
+        })->values();
 
         $totals = [
             'ob_hd' => collect($hourlyRows)->sum('ob_hd'),
@@ -727,7 +833,7 @@ class OperationalStatusController extends Controller
             'totals' => $totals,
             'details' => $detailRows,
             'units' => $units,
-            'operator' => $operator,
+            'operators' => $operators,
             'notes' => trim((string)($lastPayload['notes'] ?? '')),
             'issues' => trim((string)($lastPayload['issues'] ?? '')),
             'include_summary' => $includeSummary,

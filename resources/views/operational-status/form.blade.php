@@ -167,7 +167,12 @@
                             <td><div class="ops-hour">@if($isCurrent)<span></span>@endif{{ str_pad((int)$row->HOUR,2,'0',STR_PAD_LEFT) }}:00</div>
                                 <input type="hidden" name="hourly[{{ $i }}][num]" value="{{ $row->NUM ?? '' }}"><input type="hidden" name="hourly[{{ $i }}][hour]" value="{{ $row->HOUR }}"><input type="hidden" name="hourly[{{ $i }}][sort]" value="{{ $row->SORT ?? '' }}">
                             </td>
-                            <td class="num strong">{{ number_format($row->PRODUCTION??0,0,',','.') }}<input type="hidden" name="hourly[{{ $i }}][production]" value="{{ $row->PRODUCTION??0 }}"></td>
+                            <td class="num strong">
+                                <div class="hourly-production-main">{{ number_format($row->PRODUCTION??0,0,',','.') }}</div>
+                                <div class="hourly-distance" title="Rata-rata jarak hauling OB, tidak termasuk lumpur">Distance: {{ number_format((float)($row->AVG_DISTANCE_OB??0),2,'.','') }} km</div>
+                                <input type="hidden" name="hourly[{{ $i }}][production]" value="{{ $row->PRODUCTION??0 }}">
+                                <input type="hidden" name="hourly[{{ $i }}][avg_distance_ob]" value="{{ $row->AVG_DISTANCE_OB??0 }}">
+                            </td>
                             <td class="num">{{ number_format($row->PLAN_PRODUCTION??0,0,',','.') }}<input type="hidden" name="hourly[{{ $i }}][plan]" value="{{ $row->PLAN_PRODUCTION }}"></td>
                             <td class="center"><span class="ops-ach {{ $achClass }}">{{ number_format($rowAch,2) }}%</span><input type="hidden" name="hourly[{{ $i }}][ach]" value="{{ $row->ACH??0 }}"></td>
                             <td class="num">{{ number_format($row->PRODUCTION_CUM??0,0,',','.') }}<input type="hidden" name="hourly[{{ $i }}][production_cum]" value="{{ $row->PRODUCTION_CUM??0 }}"></td>
@@ -278,13 +283,27 @@
                         <p>Kehadiran dan distribusi operator.</p>
                     </div>
                 </div>
-                <div class="operator-grid">
-                    @foreach(['planned'=>'Plan
-                    Kehadiran','present'=>'Hadir','operation'=>'Operasi','spare'=>'Spare','izin'=>'Izin','sakit'=>'Sakit','mangkir'=>'Mangkir','sk'=>'S/K','emergency'=>'Emergency']
-                    as $key => $label)
-                    <div class="ops-field"><label>{{ $label }}</label><input type="number" class="ops-input manual"
-                            name="operator[{{ $key }}]" value="{{ $operatorStatus[$key] ?? '' }}" placeholder="-"></div>
-                    @endforeach
+                <div class="ops-table-wrap">
+                    <table class="ops-table small-table operator-table">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th class="center">Hadir</th>
+                                <th class="center">Operasi</th>
+                                <th class="center">Spare</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach(['EX Big','HD OB','HD MV','MG','BD','WT','EX Small'] as $i => $type)
+                            <tr>
+                                <td><strong>{{ $type }}</strong><input type="hidden" name="operators[{{ $i }}][type]" value="{{ $type }}"></td>
+                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][hadir]" value="{{ $operatorStatus[$type]['hadir'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][operation]" value="{{ $operatorStatus[$type]['operation'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][spare]" value="{{ $operatorStatus[$type]['spare'] ?? 0 }}" min="0"></td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -853,6 +872,20 @@
         font-weight: 750
     }
 
+    .hourly-production-main {
+        font-size: 12px;
+        font-weight: 750;
+        line-height: 1.2
+    }
+
+    .hourly-distance {
+        margin-top: 3px;
+        font-size: 9px;
+        font-weight: 500;
+        color: #7b8794;
+        white-space: nowrap
+    }
+
     .current-row {
         background: #f5f9ff !important
     }
@@ -1143,6 +1176,16 @@
         .ops-button {
             width: 100%
         }
+    }
+
+
+    .operator-table th,
+    .operator-table td {
+        vertical-align: middle
+    }
+
+    .operator-table td:first-child {
+        width: 34%
     }
 
 </style>
