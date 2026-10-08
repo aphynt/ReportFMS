@@ -813,13 +813,28 @@ class OperationalStatusController extends Controller
             ];
         })->values();
 
+        $hourlyCollection = collect($hourlyRows);
+
+        $obHdValues = $hourlyCollection
+            ->pluck('ob_hd')
+            ->filter(fn($value) => is_numeric($value) && (float)$value > 0);
+
+        $mudHdValues = $hourlyCollection
+            ->pluck('mud_hd')
+            ->filter(fn($value) => is_numeric($value) && (float)$value > 0);
+
         $totals = [
-            'ob_hd' => collect($hourlyRows)->sum('ob_hd'),
-            'ob_trip' => collect($hourlyRows)->sum('ob_trip'),
-            'ob_volume' => collect($hourlyRows)->sum('ob_volume'),
-            'mud_hd' => collect($hourlyRows)->sum('mud_hd'),
-            'mud_trip' => collect($hourlyRows)->sum('mud_trip'),
-            'mud_volume' => collect($hourlyRows)->sum('mud_volume'),
+            'ob_hd' => $obHdValues->count()
+                ? (int) round($obHdValues->avg())
+                : 0,
+            'ob_trip' => $hourlyCollection->sum('ob_trip'),
+            'ob_volume' => $hourlyCollection->sum('ob_volume'),
+
+            'mud_hd' => $mudHdValues->count()
+                ? (int) round($mudHdValues->avg())
+                : 0,
+            'mud_trip' => $hourlyCollection->sum('mud_trip'),
+            'mud_volume' => $hourlyCollection->sum('mud_volume'),
         ];
 
         return [
