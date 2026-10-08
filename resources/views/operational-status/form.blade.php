@@ -297,9 +297,9 @@
                             @foreach(['EX Big','HD OB','HD MV','MG','BD','WT','EX Small'] as $i => $type)
                             <tr>
                                 <td><strong>{{ $type }}</strong><input type="hidden" name="operators[{{ $i }}][type]" value="{{ $type }}"></td>
-                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][hadir]" value="{{ $operatorStatus[$type]['hadir'] ?? 0 }}" min="0"></td>
-                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][operation]" value="{{ $operatorStatus[$type]['operation'] ?? 0 }}" min="0"></td>
-                                <td><input type="number" class="ops-input manual center" name="operators[{{ $i }}][spare]" value="{{ $operatorStatus[$type]['spare'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input manual center operator-hadir" data-row="{{ $i }}" name="operators[{{ $i }}][hadir]" value="{{ $operatorStatus[$type]['hadir'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input manual center operator-operation" data-row="{{ $i }}" name="operators[{{ $i }}][operation]" value="{{ $operatorStatus[$type]['operation'] ?? 0 }}" min="0"></td>
+                                <td><input type="number" class="ops-input center operator-spare" id="operator_spare_{{ $i }}" name="operators[{{ $i }}][spare]" value="{{ max(0, (int)($operatorStatus[$type]['hadir'] ?? 0) - (int)($operatorStatus[$type]['operation'] ?? 0)) }}" min="0" readonly></td>
                             </tr>
                             @endforeach
                         </tbody>
@@ -1233,6 +1233,19 @@ $(function(){
     function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
     $(document).on('input change','.unit-pop,.unit-down',function(){calculateReady($(this).data('row'))});
     $('.unit-pop').each(function(){calculateReady($(this).data('row'))});
+
+    function calculateOperatorSpare(row){
+        const hadir=parseInt($('.operator-hadir[data-row="'+row+'"]').val(),10)||0;
+        const operation=parseInt($('.operator-operation[data-row="'+row+'"]').val(),10)||0;
+        $('#operator_spare_'+row).val(Math.max(0,hadir-operation));
+    }
+    $(document).on('input change','.operator-hadir,.operator-operation',function(){
+        calculateOperatorSpare($(this).data('row'));
+    });
+    $('.operator-hadir').each(function(){
+        calculateOperatorSpare($(this).data('row'));
+    });
+
     function updateCompletion(){const f=$('.required-manual');if(!f.length){$('#completionFill').css('width','100%');$('#completionText').text('100%');return}let n=0;f.each(function(){if($(this).val()!=='')n++});const p=Math.round(n/f.length*100);$('#completionFill').css('width',p+'%');$('#completionText').text(p+'%')}
     $(document).on('input change','.required-manual',updateCompletion);updateCompletion();
     $('#btnWhatsapp').on('click',function(){$('#modalWhatsapp').modal('show');loadWhatsappHistory()});

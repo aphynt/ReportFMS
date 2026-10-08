@@ -300,10 +300,13 @@ class OperationalStatusController extends Controller
             $type = trim((string)($operator['type'] ?? ''));
 
             if ($type !== '' && array_key_exists($type, $operatorStatus)) {
+                $hadir = is_numeric($operator['hadir'] ?? null) ? (int)$operator['hadir'] : 0;
+                $operation = is_numeric($operator['operation'] ?? null) ? (int)$operator['operation'] : 0;
+
                 $operatorStatus[$type] = [
-                    'hadir' => is_numeric($operator['hadir'] ?? null) ? (int)$operator['hadir'] : 0,
-                    'operation' => is_numeric($operator['operation'] ?? null) ? (int)$operator['operation'] : 0,
-                    'spare' => is_numeric($operator['spare'] ?? null) ? (int)$operator['spare'] : 0,
+                    'hadir' => $hadir,
+                    'operation' => $operation,
+                    'spare' => max(0, $hadir - $operation),
                 ];
             }
         }
@@ -375,11 +378,14 @@ class OperationalStatusController extends Controller
 
         $operators = collect($request->input('operators', []))
             ->map(function ($operator) {
+                $hadir = max(0, (int)($operator['hadir'] ?? 0));
+                $operation = max(0, (int)($operator['operation'] ?? 0));
+
                 return [
                     'type' => trim((string)($operator['type'] ?? '')),
-                    'hadir' => max(0, (int)($operator['hadir'] ?? 0)),
-                    'operation' => max(0, (int)($operator['operation'] ?? 0)),
-                    'spare' => max(0, (int)($operator['spare'] ?? 0)),
+                    'hadir' => $hadir,
+                    'operation' => $operation,
+                    'spare' => max(0, $hadir - $operation),
                 ];
             })
             ->filter(fn($operator) => $operator['type'] !== '')
@@ -796,10 +802,13 @@ class OperationalStatusController extends Controller
             $type = trim((string)($operatorRow['type'] ?? ''));
 
             if ($type !== '' && array_key_exists($type, $operatorDefaults)) {
+                $hadir = is_numeric($operatorRow['hadir'] ?? null) ? (int)$operatorRow['hadir'] : 0;
+                $operation = is_numeric($operatorRow['operation'] ?? null) ? (int)$operatorRow['operation'] : 0;
+
                 $operatorDefaults[$type] = [
-                    'hadir' => is_numeric($operatorRow['hadir'] ?? null) ? (int)$operatorRow['hadir'] : 0,
-                    'operation' => is_numeric($operatorRow['operation'] ?? null) ? (int)$operatorRow['operation'] : 0,
-                    'spare' => is_numeric($operatorRow['spare'] ?? null) ? (int)$operatorRow['spare'] : 0,
+                    'hadir' => $hadir,
+                    'operation' => $operation,
+                    'spare' => max(0, $hadir - $operation),
                 ];
             }
         }
