@@ -1065,7 +1065,7 @@
 
     .ops-textarea {
         width: 100%;
-        height: 170px;
+        height: 400px;
         border: 1px solid #dde4eb;
         border-radius: 11px;
         padding: 12px 13px;
