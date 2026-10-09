@@ -1056,7 +1056,7 @@
 
     .ops-textarea {
         width: 100%;
-        height: 170px;
+        height: 400px;
         border: 1px solid #dde4eb;
         border-radius: 11px;
         padding: 12px 13px;
@@ -1228,7 +1228,7 @@ $(function(){
     $('#hour_start').on('change',updateHourEnd);
     updateHourEnd();
     $('#btnReload').on('click',function(){const u=new URL("{{ route('operational-status.index') }}",window.location.origin);u.searchParams.set('date',$('#report_date').val());u.searchParams.set('shift',$('#shift_no').val());u.searchParams.set('hour_start',$('#hour_start').val());u.searchParams.set('hour_end',$('#hour_end').val());window.location.href=u.toString()});
-    $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
+    $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*30));updateCompletion()});
     $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
     function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
     $(document).on('input change','.unit-pop,.unit-down',function(){calculateReady($(this).data('row'))});

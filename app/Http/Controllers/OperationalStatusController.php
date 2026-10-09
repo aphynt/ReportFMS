@@ -62,14 +62,14 @@ class OperationalStatusController extends Controller
 
 
         if (!$history) {
-            $carryHistory = $latestShiftHistories
-                ->filter(fn($row) => $this->shiftPosition((int)substr($row->HOUR_START, 0, 2), $shiftNo) < $this->shiftPosition($startHour, $shiftNo))
-                ->last();
+            $carryHistory = $this->latestCarryHistoryBefore($startDateTimeCarbon);
 
             if ($carryHistory) {
                 $carrySaved = json_decode($carryHistory->PAYLOAD_JSON, true) ?: [];
                 $continuedFrom = [
                     'id' => $carryHistory->ID,
+                    'date' => Carbon::parse($carryHistory->REPORT_DATE)->format('Y-m-d'),
+                    'shift' => (int)$carryHistory->SHIFT_NO,
                     'hour_start' => substr($carryHistory->HOUR_START, 0, 5),
                     'hour_end' => substr($carryHistory->HOUR_END, 0, 5),
                     'version' => $carryHistory->VERSION,
@@ -583,6 +583,40 @@ class OperationalStatusController extends Controller
         return redirect()->route('operational-status.index', [
             'history_id' => $id,
         ]);
+    }
+
+    private function latestCarryHistoryBefore(Carbon $targetDateTime)
+    {
+        $historyStartExpression = "
+            DATEADD(
+                DAY,
+                CASE
+                    WHEN SHIFT_NO = 7
+                         AND DATEPART(HOUR, TRY_CONVERT(TIME(0), HOUR_START)) < 7
+                    THEN 1
+                    ELSE 0
+                END,
+                DATEADD(
+                    MINUTE,
+                    DATEDIFF(
+                        MINUTE,
+                        CAST('00:00:00' AS TIME),
+                        TRY_CONVERT(TIME(0), HOUR_START)
+                    ),
+                    CAST(REPORT_DATE AS DATETIME2)
+                )
+            )
+        ";
+
+        return OperationalStatusHistory::query()
+            ->whereRaw(
+                $historyStartExpression.' < CAST(? AS DATETIME2)',
+                [$targetDateTime->format('Y-m-d H:i:s')]
+            )
+            ->orderByRaw($historyStartExpression.' DESC')
+            ->orderByDesc('VERSION')
+            ->orderByDesc('ID')
+            ->first();
     }
 
     private function latestShiftHistories(string $reportDate, int $shiftNo)
