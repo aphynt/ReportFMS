@@ -339,12 +339,21 @@
                 </div>
             </div>
             <div class="save-actions">
-                <button type="button" id="btnWhatsapp" class="ops-button whatsapp"><i class="fab fa-whatsapp"></i>WhatsApp</button>
-                <button type="submit" name="status" value="draft" class="ops-button secondary"><i class="far fa-save"></i>Draft</button>
-                <button type="submit" name="status" value="submitted" class="ops-button ops-button-primary"><i class="fas fa-check"></i>Simpan Report</button>
+                <button type="button" id="btnWhatsapp" class="ops-button whatsapp"><i class="fab fa-whatsapp"></i>History</button>
+                @if(!empty($history))
+                    <button type="button" id="btnDeleteHistory" class="ops-button danger"><i class="fas fa-trash-alt"></i>Hapus</button>
+                @endif
+                <button type="submit" name="status" value="draft" class="ops-button ops-button-primary"><i class="far fa-save"></i>Simpan</button>
             </div>
         </div>
     </form>
+
+    @if(!empty($history))
+    <form id="deleteHistoryForm" method="POST" action="{{ route('operational-status.destroy', ['id' => $history->ID]) }}" style="display:none">
+        @csrf
+        @method('DELETE')
+    </form>
+    @endif
 </div>
 
 <div class="modal fade" id="modalWhatsapp" tabindex="-1" aria-labelledby="modalWhatsappLabel" aria-hidden="true">
@@ -1123,7 +1132,7 @@
         gap: 7px
     }
 
-    .ops-button.whatsapp{background:#eaf8f1;color:#137a51;border:1px solid #ccebdd}.ops-button.whatsapp:hover{background:#ddf5e9;color:#0f6843}.wa-modal{border:0;border-radius:18px;overflow:hidden}.wa-modal .modal-header{padding:18px 20px;border-bottom:1px solid #e8edf3}.wa-modal .modal-title{font-size:17px;font-weight:750;margin:2px 0}.wa-kicker,.wa-section-title{font-size:9px;font-weight:800;letter-spacing:1px;color:#8391a2}.wa-toolbar{display:flex;gap:18px;align-items:center;margin-bottom:12px;font-size:11px;color:#536579}.wa-toolbar label{margin:0;display:flex;align-items:center;gap:6px}.wa-layout{display:grid;grid-template-columns:400px 1fr;gap:18px}.wa-history{border-right:1px solid #e8edf3;padding-right:18px;max-height:520px;overflow:auto}.wa-history-row{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:9px;padding:10px;border:1px solid #e7ecf2;border-radius:11px;margin-bottom:8px;transition:.15s}.wa-history-row:hover{background:#f8fafc;border-color:#d9e2ec}.wa-history-main strong{display:block;font-size:12px;color:#26394e}.wa-history-main small{font-size:9px;color:#8391a2}.wa-edit{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#f2f5f8;color:#52677d;text-decoration:none!important}.wa-edit:hover{background:#e8eef5;color:#24425f}.wa-preview textarea{width:100%;height:500px;resize:vertical;border:1px solid #dfe5ec;border-radius:12px;padding:14px;font:12px/1.55 Consolas,monospace;color:#26394e;background:#f9fbfc;outline:0}.wa-preview textarea:focus{border-color:#91abd0;box-shadow:0 0 0 3px rgba(37,99,235,.06)}.wa-loading,.wa-empty{padding:30px;text-align:center;color:#8996a5;font-size:11px}
+    .ops-button.whatsapp{background:#eaf8f1;color:#137a51;border:1px solid #ccebdd}.ops-button.danger{background:#fff0f0;color:#c0392b;border:1px solid #f2c7c2}.ops-button.danger:hover{background:#fde3e3;color:#a92e22}.ops-button.whatsapp:hover{background:#ddf5e9;color:#0f6843}.wa-modal{border:0;border-radius:18px;overflow:hidden}.wa-modal .modal-header{padding:18px 20px;border-bottom:1px solid #e8edf3}.wa-modal .modal-title{font-size:17px;font-weight:750;margin:2px 0}.wa-kicker,.wa-section-title{font-size:9px;font-weight:800;letter-spacing:1px;color:#8391a2}.wa-toolbar{display:flex;gap:18px;align-items:center;margin-bottom:12px;font-size:11px;color:#536579}.wa-toolbar label{margin:0;display:flex;align-items:center;gap:6px}.wa-layout{display:grid;grid-template-columns:400px 1fr;gap:18px}.wa-history{border-right:1px solid #e8edf3;padding-right:18px;max-height:520px;overflow:auto}.wa-history-row{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:9px;padding:10px;border:1px solid #e7ecf2;border-radius:11px;margin-bottom:8px;transition:.15s}.wa-history-row:hover{background:#f8fafc;border-color:#d9e2ec}.wa-history-main strong{display:block;font-size:12px;color:#26394e}.wa-history-main small{font-size:9px;color:#8391a2}.wa-edit{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#f2f5f8;color:#52677d;text-decoration:none!important}.wa-edit:hover{background:#e8eef5;color:#24425f}.wa-preview textarea{width:100%;height:500px;resize:vertical;border:1px solid #dfe5ec;border-radius:12px;padding:14px;font:12px/1.55 Consolas,monospace;color:#26394e;background:#f9fbfc;outline:0}.wa-preview textarea:focus{border-color:#91abd0;box-shadow:0 0 0 3px rgba(37,99,235,.06)}.wa-loading,.wa-empty{padding:30px;text-align:center;color:#8996a5;font-size:11px}
 
     .wa-preview-stage{min-height:520px;max-height:640px;overflow:auto;background:#eef2f6;border:1px solid #dfe5ec;border-radius:12px;padding:14px;display:flex;align-items:flex-start;justify-content:center}.wa-preview-stage img{display:block;max-width:100%;height:auto;background:#fff;box-shadow:0 8px 24px rgba(16,42,67,.14)}#waRenderHost{position:fixed;left:-20000px;top:0;width:1000px;z-index:-1;opacity:1;pointer-events:none}.wa-generating{padding:70px 20px;text-align:center;color:#728197;font-size:12px}.wa-generating i{display:block;font-size:22px;margin-bottom:10px}.wa-history-row.active{border-color:#9db4d0;background:#f6f9fd}
 
@@ -1220,6 +1229,11 @@
 });
 $(function(){
     let waBlob=null,waFilename='operational-status.png',waCaption='Operational Status';
+
+    $('#btnDeleteHistory').on('click',function(){
+        if(!confirm('Hapus data Operational Status ini? Data tidak dihapus permanen dan hanya akan dinonaktifkan.')) return;
+        $('#deleteHistoryForm').trigger('submit');
+    });
     function padHour(h){return String(h).padStart(2,'0')+':00'}
     function getShiftHours(shift){return String(shift)==='6'?[7,8,9,10,11,12,13,14,15,16,17,18]:[19,20,21,22,23,0,1,2,3,4,5,6]}
     function updateHourEnd(){const start=$('#hour_start').val();if(!start)return;const h=parseInt(start.substring(0,2),10);const end=padHour((h+1)%24);$('#hour_end').val(end);$('#hour_end_display').val(end)}

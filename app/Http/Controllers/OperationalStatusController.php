@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OperationalStatusController extends Controller
 {
@@ -18,7 +19,7 @@ class OperationalStatusController extends Controller
         $saved = [];
 
         if ($request->filled('history_id')) {
-            $history = OperationalStatusHistory::findOrFail($request->history_id);
+            $history = OperationalStatusHistory::where('IS_ACTIVE', 1)->findOrFail($request->history_id);
             $saved = json_decode($history->PAYLOAD_JSON, true) ?: [];
 
             $request->merge([
@@ -53,6 +54,21 @@ class OperationalStatusController extends Controller
         $startHour = (int)$startDateTimeCarbon->format('H');
         $selectedHour = str_pad($startHour, 2, '0', STR_PAD_LEFT);
         $shiftHours = $this->shiftHours($shiftNo);
+
+        if (!$history) {
+            $existingHistory = $this->activeHistoryForSlot(
+                $reportDate,
+                $shiftNo,
+                $hourStart,
+                $hourEnd
+            );
+
+            if ($existingHistory) {
+                return redirect()
+                    ->route('operational-status.edit-history', ['id' => $existingHistory->ID])
+                    ->with('info', 'Data pada tanggal dan jam tersebut sudah ada. Sistem membuka mode edit.');
+            }
+        }
 
         $latestShiftHistories = $this->latestShiftHistories($reportDate, $shiftNo);
         $carryHistory = null;
@@ -342,7 +358,8 @@ class OperationalStatusController extends Controller
             'shift_no' => 'required|in:6,7',
             'hour_start' => 'required|date_format:H:i',
             'hour_end' => 'required|date_format:H:i',
-            'status' => 'nullable|in:draft,submitted',
+            'status' => 'nullable|in:draft',
+            'base_history_id' => 'nullable|integer',
         ]);
 
         $shiftNo = (int)$request->shift_no;
@@ -364,8 +381,8 @@ class OperationalStatusController extends Controller
 
         $units = collect($request->input('units', []))
             ->map(function ($unit) {
-                $pop = (int)($unit['pop'] ?? 0);
-                $down = (int)($unit['down'] ?? 0);
+                $pop = max(0, (int)($unit['pop'] ?? 0));
+                $down = max(0, (int)($unit['down'] ?? 0));
 
                 $unit['pop'] = $pop;
                 $unit['down'] = $down;
@@ -395,15 +412,75 @@ class OperationalStatusController extends Controller
         $request->merge([
             'units' => $units,
             'operators' => $operators,
+            'status' => 'draft',
         ]);
 
         $model = new OperationalStatusHistory();
 
         $history = $model->getConnection()->transaction(function () use ($request) {
-            $latestVersion = OperationalStatusHistory::whereDate('REPORT_DATE', $request->report_date)
-                ->where('SHIFT_NO', $request->shift_no)
-                ->where('HOUR_START', $request->hour_start)
-                ->where('HOUR_END', $request->hour_end)
+            $editingId = $request->filled('base_history_id')
+                ? (int)$request->base_history_id
+                : null;
+
+            $slotQuery = OperationalStatusHistory::query()
+                ->whereDate('REPORT_DATE', $request->report_date)
+                ->where('SHIFT_NO', (int)$request->shift_no)
+                ->where('IS_ACTIVE', 1)
+                ->whereRaw(
+                    'TRY_CONVERT(TIME(0), HOUR_START) = TRY_CONVERT(TIME(0), ?)',
+                    [$request->hour_start]
+                )
+                ->whereRaw(
+                    'TRY_CONVERT(TIME(0), HOUR_END) = TRY_CONVERT(TIME(0), ?)',
+                    [$request->hour_end]
+                );
+
+            $existingSlot = $slotQuery->lockForUpdate()->first();
+
+            if ($editingId) {
+                $history = OperationalStatusHistory::query()
+                    ->where('IS_ACTIVE', 1)
+                    ->lockForUpdate()
+                    ->findOrFail($editingId);
+
+                if ($existingSlot && (int)$existingSlot->ID !== (int)$history->ID) {
+                    throw ValidationException::withMessages([
+                        'hour_start' => 'Data aktif pada tanggal dan jam tersebut sudah ada. Silakan edit data yang sudah ada.',
+                    ]);
+                }
+
+                $history->REPORT_DATE = $request->report_date;
+                $history->SHIFT_NO = (int)$request->shift_no;
+                $history->HOUR_START = $request->hour_start;
+                $history->HOUR_END = $request->hour_end;
+                $history->STATUS = 'draft';
+                $history->PAYLOAD_JSON = json_encode(
+                    $request->except('_token'),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
+                $history->IS_ACTIVE = 1;
+                $history->save();
+
+                return $history;
+            }
+
+            if ($existingSlot) {
+                throw ValidationException::withMessages([
+                    'hour_start' => 'Data pada tanggal dan jam tersebut sudah ada. Tidak dapat membuat data baru; silakan gunakan fitur Edit.',
+                ]);
+            }
+
+            $latestVersion = OperationalStatusHistory::query()
+                ->whereDate('REPORT_DATE', $request->report_date)
+                ->where('SHIFT_NO', (int)$request->shift_no)
+                ->whereRaw(
+                    'TRY_CONVERT(TIME(0), HOUR_START) = TRY_CONVERT(TIME(0), ?)',
+                    [$request->hour_start]
+                )
+                ->whereRaw(
+                    'TRY_CONVERT(TIME(0), HOUR_END) = TRY_CONVERT(TIME(0), ?)',
+                    [$request->hour_end]
+                )
                 ->lockForUpdate()
                 ->max('VERSION');
 
@@ -413,19 +490,42 @@ class OperationalStatusController extends Controller
                 'HOUR_START' => $request->hour_start,
                 'HOUR_END' => $request->hour_end,
                 'VERSION' => ((int)$latestVersion) + 1,
-                'STATUS' => $request->status ?? 'draft',
+                'STATUS' => 'draft',
                 'PAYLOAD_JSON' => json_encode(
                     $request->except('_token'),
                     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                 ),
-                'BASE_HISTORY_ID' => $request->filled('base_history_id') ? (int)$request->base_history_id : null,
+                'BASE_HISTORY_ID' => null,
                 'CREATED_BY' => optional(Auth::user())->name ?? optional(Auth::user())->nik ?? null,
+                'IS_ACTIVE' => 1,
             ]);
         });
 
         return redirect()
             ->route('operational-status.edit-history', ['id' => $history->getKey()])
-            ->with('success', "Operational Status V{$history->VERSION} berhasil disimpan.");
+            ->with('success', 'Operational Status berhasil disimpan.');
+    }
+
+    public function destroy($id)
+    {
+        $history = OperationalStatusHistory::query()
+            ->where('IS_ACTIVE', 1)
+            ->findOrFail($id);
+
+        $reportDate = Carbon::parse($history->REPORT_DATE)->format('Y-m-d');
+        $shiftNo = (int)$history->SHIFT_NO;
+        $hourStart = Carbon::parse($history->HOUR_START)->format('H:i');
+
+        $history->IS_ACTIVE = 0;
+        $history->save();
+
+        return redirect()
+            ->route('operational-status.index', [
+                'date' => $reportDate,
+                'shift' => $shiftNo,
+                'hour_start' => $hourStart,
+            ])
+            ->with('success', 'Data Operational Status berhasil dihapus.');
     }
 
     public function whatsappHistories(Request $request)
@@ -439,6 +539,7 @@ class OperationalStatusController extends Controller
 
         $rows = OperationalStatusHistory::whereDate('REPORT_DATE', $request->date)
             ->where('SHIFT_NO', $shiftNo)
+            ->where('IS_ACTIVE', 1)
             ->get()
             ->filter(fn($row) => $this->hourBelongsToShift((int)substr($row->HOUR_START, 0, 2), $shiftNo))
             ->groupBy(fn($row) => substr($row->HOUR_START, 0, 5).'|'.substr($row->HOUR_END, 0, 5))
@@ -467,7 +568,7 @@ class OperationalStatusController extends Controller
             'include_summary' => 'nullable|boolean',
         ]);
 
-        $rows = OperationalStatusHistory::whereIn('ID', $request->ids)->get();
+        $rows = OperationalStatusHistory::whereIn('ID', $request->ids)->where('IS_ACTIVE', 1)->get();
 
         if ($rows->isEmpty()) {
             return response()->json(['message' => 'Data historical tidak ditemukan.'], 404);
@@ -559,7 +660,7 @@ class OperationalStatusController extends Controller
             'include_summary' => 'nullable|boolean',
         ]);
 
-        $rows = OperationalStatusHistory::whereIn('ID', $request->ids)->get();
+        $rows = OperationalStatusHistory::whereIn('ID', $request->ids)->where('IS_ACTIVE', 1)->get();
 
         if ($rows->isEmpty()) {
             return response()->json(['message' => 'Data historical tidak ditemukan.'], 404);
@@ -578,11 +679,34 @@ class OperationalStatusController extends Controller
 
     public function editHistory($id)
     {
-        OperationalStatusHistory::findOrFail($id);
+        OperationalStatusHistory::where('IS_ACTIVE', 1)->findOrFail($id);
 
         return redirect()->route('operational-status.index', [
             'history_id' => $id,
         ]);
+    }
+
+    private function activeHistoryForSlot(
+        string $reportDate,
+        int $shiftNo,
+        string $hourStart,
+        string $hourEnd
+    ) {
+        return OperationalStatusHistory::query()
+            ->whereDate('REPORT_DATE', $reportDate)
+            ->where('SHIFT_NO', $shiftNo)
+            ->where('IS_ACTIVE', 1)
+            ->whereRaw(
+                'TRY_CONVERT(TIME(0), HOUR_START) = TRY_CONVERT(TIME(0), ?)',
+                [$hourStart]
+            )
+            ->whereRaw(
+                'TRY_CONVERT(TIME(0), HOUR_END) = TRY_CONVERT(TIME(0), ?)',
+                [$hourEnd]
+            )
+            ->orderByDesc('VERSION')
+            ->orderByDesc('ID')
+            ->first();
     }
 
     private function latestCarryHistoryBefore(Carbon $targetDateTime)
@@ -609,6 +733,7 @@ class OperationalStatusController extends Controller
         ";
 
         return OperationalStatusHistory::query()
+            ->where('IS_ACTIVE', 1)
             ->whereRaw(
                 $historyStartExpression.' < CAST(? AS DATETIME2)',
                 [$targetDateTime->format('Y-m-d H:i:s')]
@@ -623,6 +748,7 @@ class OperationalStatusController extends Controller
     {
         return OperationalStatusHistory::whereDate('REPORT_DATE', $reportDate)
             ->where('SHIFT_NO', $shiftNo)
+            ->where('IS_ACTIVE', 1)
             ->get()
             ->filter(fn($row) => $this->hourBelongsToShift((int)substr($row->HOUR_START, 0, 2), $shiftNo))
             ->groupBy(fn($row) => substr($row->HOUR_START, 0, 5).'|'.substr($row->HOUR_END, 0, 5))
