@@ -168,7 +168,7 @@ class OperationalStatusController extends Controller
                     'DT_PLAN' => $row['dt_plan'] ?? null,
                     'TRIP_ACTUAL' => (int)($row['trip_actual'] ?? 0),
                     'TRIP_PLAN' => $row['trip_plan'] ?? null,
-                    'PDTY_ACTUAL' => (float)($row['pdty_actual'] ?? 0),
+                    'PDTY_ACTUAL' => (int) round((float)($row['pdty_actual'] ?? 0)),
                     'PDTY_PLAN' => $row['pdty_plan'] ?? null,
                     'PLAN_REFERENCE' => $row['plan_reference'] ?? null,
                     'WD_STATUS' => $row['wd_status'] ?? null,
@@ -232,9 +232,11 @@ class OperationalStatusController extends Controller
                 $row->DISTANCE_ACTUAL = round($distance, 2);
                 $row->DT_ACTUAL = (int)($rit->HD_ACTUAL ?? $row->NUNIT ?? 0);
                 $row->TRIP_ACTUAL = (int)($rit->TRIP_ACTUAL ?? 0);
-                $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
+                $pdtyActual = $row->MATERIAL === 'MUD'
                     ? (float)($rit->RIT_VOLUME ?? 0)
                     : (float)($row->CAPACITY ?? 0);
+
+                $row->PDTY_ACTUAL = (int) round($pdtyActual);
                 $row->PLAN_REFERENCE = $plan ? (float)$plan->pln_val : null;
                 $row->DT_PLAN = null;
                 $row->TRIP_PLAN = null;

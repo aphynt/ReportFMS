@@ -230,7 +230,7 @@
                             <td><input type="number" class="ops-input manual center required-manual" name="details[{{ $i }}][dt_plan]" value="{{ $row->DT_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="readonly-value">{{ $row->TRIP_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][trip_actual]" value="{{ $row->TRIP_ACTUAL??0 }}"></td>
                             <td><input type="number" class="ops-input manual center required-manual trip-plan" data-row="{{ $i }}" name="details[{{ $i }}][trip_plan]" value="{{ $row->TRIP_PLAN??'' }}" placeholder="-"></td>
-                            <td class="center"><span class="readonly-value">{{ $row->PDTY_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][pdty_actual]" value="{{ $row->PDTY_ACTUAL??0 }}"></td>
+                            <td class="center"><span class="readonly-value">{{ number_format((float)($row->PDTY_ACTUAL??0),0,',','.') }}</span><input type="hidden" name="details[{{ $i }}][pdty_actual]" value="{{ (int)round((float)($row->PDTY_ACTUAL??0)) }}"></td>
                             <td><input type="number" class="ops-input manual center pdty-plan" id="pdty_plan_{{ $i }}" name="details[{{ $i }}][pdty_plan]" value="{{ $row->PDTY_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="ref-pill">{{ $row->PLAN_REFERENCE??'-' }}</span><input type="hidden" name="details[{{ $i }}][plan_reference]" value="{{ $row->PLAN_REFERENCE }}"></td>
                             <td><select class="ops-input manual" name="details[{{ $i }}][wd_status]"><option value="">-</option><option value="IN" {{ ($row->WD_STATUS??'')==='IN'?'selected':'' }}>IN</option><option value="OUT HR" {{ ($row->WD_STATUS??'')==='OUT HR'?'selected':'' }}>OUT HR</option><option value="IPD" {{ ($row->WD_STATUS??'')==='IPD'?'selected':'' }}>IPD</option><option value="OPD" {{ ($row->WD_STATUS??'')==='OPD'?'selected':'' }}>OPD</option></select></td>
@@ -339,11 +339,11 @@
                 </div>
             </div>
             <div class="save-actions">
-                <button type="button" id="btnWhatsapp" class="ops-button whatsapp"><i class="fab fa-whatsapp"></i>History</button>
+                <button type="button" id="btnWhatsapp" class="ops-button whatsapp"><i class="fab fa-whatsapp"></i>WhatsApp</button>
                 @if(!empty($history))
                     <button type="button" id="btnDeleteHistory" class="ops-button danger"><i class="fas fa-trash-alt"></i>Hapus</button>
                 @endif
-                <button type="submit" name="status" value="draft" class="ops-button ops-button-primary"><i class="far fa-save"></i>Simpan</button>
+                <button type="submit" name="status" value="draft" class="ops-button ops-button-primary"><i class="far fa-save"></i>Draft</button>
             </div>
         </div>
     </form>
@@ -1065,7 +1065,7 @@
 
     .ops-textarea {
         width: 100%;
-        height: 400px;
+        height: 170px;
         border: 1px solid #dde4eb;
         border-radius: 11px;
         padding: 12px 13px;

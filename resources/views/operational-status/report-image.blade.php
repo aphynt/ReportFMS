@@ -42,7 +42,7 @@
                 @foreach($items as $idx=>$row)
                 <tr>
                     @if($idx===0)<td rowspan="{{ $items->count() }}">{{ $material }}</td><td rowspan="{{ $items->count() }}">{{ $area }}</td>@endif
-                    <td>EX{{ $row['ex'] }}</td><td>{{ number_format((float)$row['distance'],2,'.','') }}</td><td>{{ $row['dt_plan'] }}</td><td>{{ $row['dt_actual'] }}</td><td>{{ is_numeric($row['pdty_plan']) ? number_format((float)$row['pdty_plan'],0,',','.') : $row['pdty_plan'] }}</td><td>{{ is_numeric($row['pdty_actual']) ? number_format((float)$row['pdty_actual'],0,',','.') : $row['pdty_actual'] }}</td><td>{{ $row['wd'] }}</td><td class="left">{{ $row['remark'] }}</td>
+                    <td>EX{{ $row['ex'] }}</td><td>{{ number_format((float)$row['distance'],2,'.','') }}</td><td>{{ $row['dt_plan'] }}</td><td>{{ $row['dt_actual'] }}</td><td>{{ is_numeric($row['pdty_plan']) ? number_format((float)$row['pdty_plan'],0,',','.') : $row['pdty_plan'] }}</td><td>{{ is_numeric($row['pdty_actual']) ? number_format(round((float)$row['pdty_actual']),0,',','.') : $row['pdty_actual'] }}</td><td>{{ $row['wd'] }}</td><td class="left">{{ $row['remark'] }}</td>
                 </tr>
                 @endforeach
             @endforeach
