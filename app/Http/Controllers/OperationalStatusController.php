@@ -962,6 +962,15 @@ class OperationalStatusController extends Controller
     }
 
     /**
+     * Padankan identitas loader riwayat, fleet dan snapshot.
+     */
+    private function normalizeReportLoaderId($loaderId): string
+    {
+        $id = $this->normalizeLoaderId($loaderId);
+        return preg_match('/^[0-9]+$/', $id) ? 'EX'.$id : $id;
+    }
+
+    /**
      * Ritasi actual tiap EX pada satu slot jam: [start, end).
      * Dipakai juga ketika edit history agar field TRIP_ACTUAL tidak membaca 0 lama.
      *
@@ -1167,84 +1176,142 @@ class OperationalStatusController extends Controller
 
         $lastPayload = json_decode($last->PAYLOAD_JSON, true) ?: [];
 
-        $snapshotDetails = $lastPayload['ritation_snapshot']['loader_material_trips'] ?? null;
-        $detailRows = collect();
-        $seenLoaders = [];
-        foreach (($lastPayload['details'] ?? []) as $d) {
-            $loaderId = $this->normalizeLoaderId($d['vhc_id'] ?? '');
-            $seenLoaders[$loaderId] = true;
-            $base = [
-                'material' => $this->inferMaterial($d),
-                'area' => preg_replace('/^PIT\s+/i', '', (string)($d['pit'] ?? '-')),
-                'ex' => preg_replace('/^EX/i', '', $loaderId ?: '-'),
-                'distance' => (float)($d['distance_actual'] ?? 0),
-                'dt_actual' => $d['dt_actual'] ?? 0,
-                'dt_plan' => ($d['dt_plan'] ?? '') !== '' ? $d['dt_plan'] : '-',
-                'trip_actual' => $d['trip_actual'] ?? 0,
-                'trip_plan' => ($d['trip_plan'] ?? '') !== '' ? $d['trip_plan'] : '-',
-                'pdty_actual' => $d['pdty_actual'] ?? 0,
-                'pdty_plan' => ($d['pdty_plan'] ?? '') !== '' ? $d['pdty_plan'] : '-',
-                'wd' => $d['wd_status'] ?? '-',
-                'remark' => trim((string)($d['remark'] ?? '')),
-            ];
-
-            // Snapshot V8 berasal dari query yang sama dengan total produksi.
-            // Jika satu EX menangani OB dan MUD, tampilkan dua baris terpisah.
-            if (is_array($snapshotDetails)) {
-                $materials = $snapshotDetails[$loaderId] ?? [];
-                $hasTrips = false;
-                foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
-                    $trips = (int)($materials[$material]['trips'] ?? 0);
-                    if ($trips <= 0) {
-                        continue;
-                    }
-                    $hasTrips = true;
-                    $detailRows->push(array_merge($base, [
-                        'material' => $material,
-                        'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
-                        'trip_actual' => $trips,
-                        'pdty_actual' => $trips * $factor,
-                    ]));
-                }
-                if (!$hasTrips) {
-                    $detailRows->push(array_merge($base, [
-                        'trip_actual' => 0,
-                        'pdty_actual' => 0,
-                    ]));
-                }
-            } else {
-                // History V7 dan sebelumnya belum menyimpan snapshot per EX.
-                // Jangan mengganti datanya tanpa proses edit dan simpan ulang.
-                $detailRows->push($base);
-            }
+        // Bagian Produksi Perjam hanya menampilkan EX yang mempunyai ritasi/volume
+        // pada interval laporan terakhir. Snapshot tetap menjadi sumber resmi
+        // bila tersedia; untuk history lama gunakan transaksi aktual slot itu.
+        $lastHourStart = substr((string) $last->HOUR_START, 0, 5);
+        $lastSlotStart = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $reportDate.' '.$lastHourStart,
+            'Asia/Makassar'
+        );
+        if ($shiftNo === 7 && (int)substr($lastHourStart, 0, 2) < 7) {
+            $lastSlotStart->addDay();
         }
-        if (is_array($snapshotDetails)) {
-            // Tampilkan transaksi yang EX-nya tidak ada dalam fleet agar total
-            // per EX tetap bisa direkonsiliasi dengan total per jam.
-            foreach ($snapshotDetails as $loaderId => $materials) {
-                if (isset($seenLoaders[$loaderId])) {
+        $lastSlotEnd = $lastSlotStart->copy()->addHour();
+
+        $snapshotDetails = $lastPayload['ritation_snapshot']['loader_material_trips'] ?? null;
+        if (!is_array($snapshotDetails)) {
+            $snapshotDetails = $this->actualTripsByExMaterialForWindow($lastSlotStart, $lastSlotEnd);
+        }
+
+        // Normalisasi kode EX di snapshot agar EX269 / ex269 / 269 tidak
+        // dianggap sebagai tiga loader berbeda pada hasil laporan.
+        $activeLoaders = [];
+        foreach ($snapshotDetails as $rawLoaderId => $materials) {
+            $loaderId = $this->normalizeReportLoaderId($rawLoaderId);
+            if ($loaderId === '' || !is_array($materials)) {
+                continue;
+            }
+            foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
+                $source = $materials[$material] ?? ($material === 'MUD' ? ($materials['MD'] ?? []) : []);
+                $trips = (int)($source['trips'] ?? 0);
+                if ($trips <= 0) {
                     continue;
                 }
-                foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
-                    $trips = (int)($materials[$material]['trips'] ?? 0);
-                    if ($trips === 0) {
-                        continue;
-                    }
-                    $detailRows->push([
-                        'material' => $material,
-                        'area' => 'BELUM TERPETAKAN',
-                        'ex' => $loaderId === '__UNASSIGNED__' ? '-' : preg_replace('/^EX/i', '', $loaderId),
-                        'distance' => 0,
-                        'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
-                        'dt_plan' => '-',
-                        'trip_actual' => $trips,
-                        'trip_plan' => '-',
-                        'pdty_actual' => $trips * $factor,
-                        'pdty_plan' => '-',
-                        'wd' => '-',
-                        'remark' => 'Loader tidak ada pada daftar fleet',
-                    ]);
+                $activeLoaders[$loaderId][$material]['trips'] =
+                    (int)($activeLoaders[$loaderId][$material]['trips'] ?? 0) + $trips;
+                $activeLoaders[$loaderId][$material]['hd'] =
+                    (int)($activeLoaders[$loaderId][$material]['hd'] ?? 0) + (int)($source['hd'] ?? 0);
+            }
+        }
+
+        // Ambil data area/Plan/W-D/Remark dari history terbaru terlebih dahulu.
+        // Jika suatu loader sudah tidak ada dalam MATCHING_FLEET saat laporan
+        // dibuat tetapi tadi sempat berproduksi, pakai metadata history terdahulu.
+        $metadataByLoader = [];
+        $addMetadata = function (array $payload) use (&$metadataByLoader): void {
+            foreach (($payload['details'] ?? []) as $detail) {
+                $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
+                if ($loaderId === '' || $loaderId === '__UNASSIGNED__') {
+                    continue;
                 }
+                if (!isset($metadataByLoader[$loaderId])) {
+                    $metadataByLoader[$loaderId] = $detail;
+                    continue;
+                }
+                $currentPit = strtoupper(trim((string)($metadataByLoader[$loaderId]['pit'] ?? '')));
+                $candidatePit = strtoupper(trim((string)($detail['pit'] ?? '')));
+                if (in_array($currentPit, ['', '-', 'BELUM TERPETAKAN'], true)
+                    && !in_array($candidatePit, ['', '-', 'BELUM TERPETAKAN'], true)) {
+                    $metadataByLoader[$loaderId]['pit'] = $detail['pit'];
+                }
+            }
+        };
+
+        $addMetadata($lastPayload);
+        foreach (collect($rows)->reverse() as $historyRow) {
+            $addMetadata(json_decode($historyRow->PAYLOAD_JSON, true) ?: []);
+        }
+
+        $missingMetadata = array_diff(array_keys($activeLoaders), array_keys($metadataByLoader));
+        if (count($missingMetadata) > 0) {
+            // Cari metadata EX di beberapa history sebelum slot terpilih.
+            // Penelusuran dibatasi supaya preview tetap ringan.
+            $cursor = $lastSlotStart->copy();
+            for ($attempt = 0; $attempt < 6 && count($missingMetadata) > 0; $attempt++) {
+                $previous = $this->latestCarryHistoryBefore($cursor);
+                if (!$previous) {
+                    break;
+                }
+                $addMetadata(json_decode($previous->PAYLOAD_JSON, true) ?: []);
+                $missingMetadata = array_diff(array_keys($activeLoaders), array_keys($metadataByLoader));
+                $previousStartHour = substr((string)$previous->HOUR_START, 0, 5);
+                $previousStart = Carbon::createFromFormat(
+                    'Y-m-d H:i',
+                    Carbon::parse($previous->REPORT_DATE)->format('Y-m-d').' '.$previousStartHour,
+                    'Asia/Makassar'
+                );
+                if ((int)$previous->SHIFT_NO === 7 && (int)substr($previousStartHour, 0, 2) < 7) {
+                    $previousStart->addDay();
+                }
+                if ($previousStart->greaterThanOrEqualTo($cursor)) {
+                    break;
+                }
+                $cursor = $previousStart;
+            }
+        }
+
+        // Prioritaskan EX yang tercatat dalam form/history, kemudian loader
+        // lain yang punya transaksi aktual. Hanya volume positif yang tampil.
+        $loaderOrder = array_values(array_unique(array_merge(
+            array_keys($metadataByLoader),
+            array_keys($activeLoaders)
+        )));
+        $detailRows = collect();
+        foreach ($loaderOrder as $loaderId) {
+            $materials = $activeLoaders[$loaderId] ?? [];
+            if (empty($materials)) {
+                continue;
+            }
+            $detail = $metadataByLoader[$loaderId] ?? [];
+            $mapped = !empty($detail);
+            $area = preg_replace('/^PIT\s+/i', '', (string)($detail['pit'] ?? 'BELUM TERPETAKAN'));
+            if (trim($area) === '' || $area === '-') {
+                $area = 'BELUM TERPETAKAN';
+            }
+
+            foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
+                $trips = (int)($materials[$material]['trips'] ?? 0);
+                if ($trips <= 0) {
+                    continue;
+                }
+                $detailRows->push([
+                    'material' => $material,
+                    'area' => $area,
+                    'ex' => $loaderId === '__UNASSIGNED__'
+                        ? '-'
+                        : preg_replace('/^EX/i', '', $loaderId),
+                    'distance' => (float)($detail['distance_actual'] ?? 0),
+                    'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
+                    'dt_plan' => ($detail['dt_plan'] ?? '') !== '' ? $detail['dt_plan'] : '-',
+                    'trip_actual' => $trips,
+                    'trip_plan' => ($detail['trip_plan'] ?? '') !== '' ? $detail['trip_plan'] : '-',
+                    'pdty_actual' => $trips * $factor,
+                    'pdty_plan' => ($detail['pdty_plan'] ?? '') !== '' ? $detail['pdty_plan'] : '-',
+                    'wd' => $detail['wd_status'] ?? '-',
+                    'remark' => trim((string)($detail['remark'] ?? ($mapped ? '' : 'Loader belum terdaftar di fleet/history'))),
+                ]);
             }
         }
         $detailRows = $detailRows->values();
