@@ -244,11 +244,11 @@ class OperationalStatusController extends Controller
                 $row->DISTANCE_ACTUAL = round($distance, 2);
                 $row->DT_ACTUAL = (int)($rit->HD_ACTUAL ?? $row->NUNIT ?? 0);
                 $row->TRIP_ACTUAL = (int)($rit->TRIP_ACTUAL ?? 0);
-                $pdtyActual = $row->MATERIAL === 'MUD'
-                    ? (float)($rit->RIT_VOLUME ?? 0)
-                    : (float)($row->CAPACITY ?? 0);
-
-                $row->PDTY_ACTUAL = (int) round($pdtyActual);
+                // Selanjutnya PDTY_ACTUAL disinkronkan dari hasil COUNT(*) per EX,
+                // LOD_MAT_ID dan interval jam, bukan dari CAPACITY / RIT_VOLUME.
+                $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
+                    ? $mudTripCount * 30
+                    : $obTripCount * 42;
                 $row->PLAN_REFERENCE = $plan ? (float)$plan->pln_val : null;
                 $row->DT_PLAN = null;
                 $row->TRIP_PLAN = null;
@@ -288,13 +288,24 @@ class OperationalStatusController extends Controller
         // Sinkronkan Ritasi Actual per EX, termasuk saat membuka history lama.
         // Data manual (plan, W/D, remark) tetap diambil dari payload history.
         // Sumber: PRD_RITATION.OPR_REPORTTIME dengan interval [start, end).
-        $actualTripsByLoader = $this->actualTripsByLoaderForWindow(
+        $actualByExMaterial = $this->actualTripsByExMaterialForWindow(
             $startDateTimeCarbon,
             $endDateTimeCarbon
         );
-        $details = $details->map(function ($row) use ($actualTripsByLoader) {
+        $details = $details->map(function ($row) use ($actualByExMaterial) {
             $loaderId = $this->normalizeLoaderId($row->VHC_ID ?? '');
-            $row->TRIP_ACTUAL = (int)($actualTripsByLoader[$loaderId] ?? 0);
+            $stats = $actualByExMaterial[$loaderId] ?? [];
+            $obTrip = (int)($stats['OB']['trips'] ?? 0);
+            $mudTrip = (int)($stats['MUD']['trips'] ?? 0);
+            $row->TRIP_ACTUAL = $obTrip + $mudTrip;
+            // Satu baris Form per EX: pilih material dominan berdasarkan transaksi.
+            // Jika campuran OB+MD, report-image menampilkan dua baris dari snapshot.
+            if ($obTrip + $mudTrip > 0) {
+                $row->MATERIAL = $mudTrip > $obTrip ? 'MUD' : 'OB';
+            }
+            $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
+                ? $mudTrip * 30
+                : $obTrip * 42;
             return $row;
         });
 
@@ -447,25 +458,35 @@ class OperationalStatusController extends Controller
             $slotStart->addDay();
         }
         $slotEnd = $slotStart->copy()->addHour();
-        $snapshotSource = (object)[
-            'HOUR_START' => $request->hour_start,
-            'PAYLOAD_JSON' => json_encode(
-                ['details' => $request->input('details', [])],
-                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-            ),
-        ];
-        $slotKey = str_pad($startHour, 2, '0', STR_PAD_LEFT);
-        $snapshotTrips = $this->actualTripTotalsByHour(
-            $request->report_date,
-            $shiftNo,
-            collect([$snapshotSource]),
-            $slotStart,
-            $slotEnd
-        );
-        $obTrips = (int)($snapshotTrips[$slotKey]['OB'] ?? 0);
-        $mudTrips = (int)($snapshotTrips[$slotKey]['MUD'] ?? 0);
+        // Ambil satu hasil agregasi untuk per EX dan total jam sekaligus,
+        // supaya saat snapshot dibuat, jumlah di bagian atas dan bawah identik.
+        $snapshotByExMaterial = $this->actualTripsByExMaterialForWindow($slotStart, $slotEnd);
+        $obTrips = 0;
+        $mudTrips = 0;
+        foreach ($snapshotByExMaterial as $materials) {
+            $obTrips += (int)($materials['OB']['trips'] ?? 0);
+            $mudTrips += (int)($materials['MUD']['trips'] ?? 0);
+        }
+
+        // Nilai readonly/hidden di Form bisa berasal dari browser yang masih lama.
+        // Hitung ulang di server agar snapshot selalu sesuai query yang sama.
+        $submittedDetails = collect($request->input('details', []))
+            ->map(function ($detail) use ($snapshotByExMaterial) {
+                $loaderId = $this->normalizeLoaderId($detail['vhc_id'] ?? '');
+                $materials = $snapshotByExMaterial[$loaderId] ?? [];
+                $ob = (int)($materials['OB']['trips'] ?? 0);
+                $mud = (int)($materials['MUD']['trips'] ?? 0);
+                $material = $ob + $mud > 0
+                    ? ($mud > $ob ? 'MUD' : 'OB')
+                    : $this->inferMaterial($detail);
+                $detail['material'] = $material;
+                $detail['trip_actual'] = $ob + $mud;
+                $detail['pdty_actual'] = $material === 'MUD' ? $mud * 30 : $ob * 42;
+                return $detail;
+            })->values()->all();
 
         $request->merge([
+            'details' => $submittedDetails,
             'units' => $units,
             'operators' => $operators,
             'status' => 'draft',
@@ -474,6 +495,7 @@ class OperationalStatusController extends Controller
                 'mud_trip' => $mudTrips,
                 'ob_volume' => $obTrips * 42,
                 'mud_volume' => $mudTrips * 30,
+                'loader_material_trips' => $snapshotByExMaterial,
                 'source' => 'focus.dbo.PRD_RITATION',
                 'classification' => 'LOD_MAT_ID',
                 'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
@@ -946,6 +968,39 @@ class OperationalStatusController extends Controller
      * CATATAN: sumber ini adalah PRD_RITATION, sesuai koneksi controller lama.
      * Bila telemetry FROM_UNIT berasal dari tabel lain, perlu mapping sumbernya.
      */
+    /**
+     * Satu sumber transaksi per jam untuk rekap dan Prty Aktual per EX.
+     * OB: COUNT(*) × 42 BCM; MD: COUNT(*) × 30 M3.
+     * __UNASSIGNED__ menampung loader kosong agar rekonsiliasi tetap utuh.
+     */
+    private function actualTripsByExMaterialForWindow(Carbon $start, Carbon $end): array
+    {
+        $records = DB::connection('focus')
+            ->table('dbo.PRD_RITATION')
+            ->select('LOD_LOADERID')
+            ->selectRaw('UPPER(LTRIM(RTRIM(LOD_MAT_ID))) AS MAT_CODE')
+            ->selectRaw('COUNT(*) AS TRIP_COUNT')
+            ->selectRaw('COUNT(DISTINCT VHC_ID) AS HD_ACTUAL')
+            ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
+            ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
+            ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
+            ->groupBy('LOD_LOADERID')
+            ->groupByRaw('UPPER(LTRIM(RTRIM(LOD_MAT_ID)))')
+            ->get();
+
+        $byEx = [];
+        foreach ($records as $record) {
+            $loaderId = $this->normalizeLoaderId($record->LOD_LOADERID);
+            $loaderId = $loaderId !== '' ? $loaderId : '__UNASSIGNED__';
+            $material = $record->MAT_CODE === 'MD' ? 'MUD' : 'OB';
+            $byEx[$loaderId][$material]['trips'] =
+                (int)($byEx[$loaderId][$material]['trips'] ?? 0) + (int)$record->TRIP_COUNT;
+            $byEx[$loaderId][$material]['hd'] =
+                (int)($byEx[$loaderId][$material]['hd'] ?? 0) + (int)$record->HD_ACTUAL;
+        }
+        return $byEx;
+    }
+
     private function actualTripsByLoaderForWindow(Carbon $start, Carbon $end): array
     {
         return DB::connection('focus')
@@ -1071,11 +1126,16 @@ class OperationalStatusController extends Controller
 
         $lastPayload = json_decode($last->PAYLOAD_JSON, true) ?: [];
 
-        $detailRows = collect($lastPayload['details'] ?? [])->map(function ($d) {
-            return [
+        $snapshotDetails = $lastPayload['ritation_snapshot']['loader_material_trips'] ?? null;
+        $detailRows = collect();
+        $seenLoaders = [];
+        foreach (($lastPayload['details'] ?? []) as $d) {
+            $loaderId = $this->normalizeLoaderId($d['vhc_id'] ?? '');
+            $seenLoaders[$loaderId] = true;
+            $base = [
                 'material' => $this->inferMaterial($d),
                 'area' => preg_replace('/^PIT\s+/i', '', (string)($d['pit'] ?? '-')),
-                'ex' => str_replace('EX', '', (string)($d['vhc_id'] ?? '-')),
+                'ex' => preg_replace('/^EX/i', '', $loaderId ?: '-'),
                 'distance' => (float)($d['distance_actual'] ?? 0),
                 'dt_actual' => $d['dt_actual'] ?? 0,
                 'dt_plan' => ($d['dt_plan'] ?? '') !== '' ? $d['dt_plan'] : '-',
@@ -1086,7 +1146,67 @@ class OperationalStatusController extends Controller
                 'wd' => $d['wd_status'] ?? '-',
                 'remark' => trim((string)($d['remark'] ?? '')),
             ];
-        })->values();
+
+            // Snapshot V8 berasal dari query yang sama dengan total produksi.
+            // Jika satu EX menangani OB dan MUD, tampilkan dua baris terpisah.
+            if (is_array($snapshotDetails)) {
+                $materials = $snapshotDetails[$loaderId] ?? [];
+                $hasTrips = false;
+                foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
+                    $trips = (int)($materials[$material]['trips'] ?? 0);
+                    if ($trips <= 0) {
+                        continue;
+                    }
+                    $hasTrips = true;
+                    $detailRows->push(array_merge($base, [
+                        'material' => $material,
+                        'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
+                        'trip_actual' => $trips,
+                        'pdty_actual' => $trips * $factor,
+                    ]));
+                }
+                if (!$hasTrips) {
+                    $detailRows->push(array_merge($base, [
+                        'trip_actual' => 0,
+                        'pdty_actual' => 0,
+                    ]));
+                }
+            } else {
+                // History V7 dan sebelumnya belum menyimpan snapshot per EX.
+                // Jangan mengganti datanya tanpa proses edit dan simpan ulang.
+                $detailRows->push($base);
+            }
+        }
+        if (is_array($snapshotDetails)) {
+            // Tampilkan transaksi yang EX-nya tidak ada dalam fleet agar total
+            // per EX tetap bisa direkonsiliasi dengan total per jam.
+            foreach ($snapshotDetails as $loaderId => $materials) {
+                if (isset($seenLoaders[$loaderId])) {
+                    continue;
+                }
+                foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
+                    $trips = (int)($materials[$material]['trips'] ?? 0);
+                    if ($trips === 0) {
+                        continue;
+                    }
+                    $detailRows->push([
+                        'material' => $material,
+                        'area' => 'BELUM TERPETAKAN',
+                        'ex' => $loaderId === '__UNASSIGNED__' ? '-' : preg_replace('/^EX/i', '', $loaderId),
+                        'distance' => 0,
+                        'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
+                        'dt_plan' => '-',
+                        'trip_actual' => $trips,
+                        'trip_plan' => '-',
+                        'pdty_actual' => $trips * $factor,
+                        'pdty_plan' => '-',
+                        'wd' => '-',
+                        'remark' => 'Loader tidak ada pada daftar fleet',
+                    ]);
+                }
+            }
+        }
+        $detailRows = $detailRows->values();
 
         $units = collect($lastPayload['units'] ?? [])->map(fn($u) => [
             'type' => $u['type'] ?? '-',
