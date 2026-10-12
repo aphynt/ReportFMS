@@ -234,7 +234,7 @@
                             <td><input type="number" class="ops-input manual center pdty-plan" id="pdty_plan_{{ $i }}" name="details[{{ $i }}][pdty_plan]" value="{{ $row->PDTY_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="ref-pill">{{ $row->PLAN_REFERENCE??'-' }}</span><input type="hidden" name="details[{{ $i }}][plan_reference]" value="{{ $row->PLAN_REFERENCE }}"></td>
                             <td><select class="ops-input manual" name="details[{{ $i }}][wd_status]"><option value="">-</option><option value="IN" {{ ($row->WD_STATUS??'')==='IN'?'selected':'' }}>IN</option><option value="OUT HR" {{ ($row->WD_STATUS??'')==='OUT HR'?'selected':'' }}>OUT HR</option><option value="IPD" {{ ($row->WD_STATUS??'')==='IPD'?'selected':'' }}>IPD</option><option value="OPD" {{ ($row->WD_STATUS??'')==='OPD'?'selected':'' }}>OPD</option></select></td>
-                            <td><input class="ops-input manual wide" name="details[{{ $i }}][remark]" value="{{ $row->REMARK??'' }}" placeholder="Material keras, free dig, standby..."></td>
+                            <td><input class="ops-input manual wide" name="details[{{ $i }}][remark]" value="{{ $row->REMARK??'' }}" ></td>
                         </tr>
                         @empty
                         <tr><td colspan="12" class="ops-empty"><i class="fas fa-truck"></i><strong>Data fleet belum tersedia</strong></td></tr>
@@ -1242,7 +1242,7 @@ $(function(){
     $('#hour_start').on('change',updateHourEnd);
     updateHourEnd();
     $('#btnReload').on('click',function(){const u=new URL("{{ route('operational-status.index') }}",window.location.origin);u.searchParams.set('date',$('#report_date').val());u.searchParams.set('shift',$('#shift_no').val());u.searchParams.set('hour_start',$('#hour_start').val());u.searchParams.set('hour_end',$('#hour_end').val());window.location.href=u.toString()});
-    $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*30));updateCompletion()});
+    $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
     $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
     function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
     $(document).on('input change','.unit-pop,.unit-down',function(){calculateReady($(this).data('row'))});

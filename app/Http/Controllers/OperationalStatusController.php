@@ -273,6 +273,19 @@ class OperationalStatusController extends Controller
             }
         }
 
+        // Sinkronkan Ritasi Actual per EX, termasuk saat membuka history lama.
+        // Data manual (plan, W/D, remark) tetap diambil dari payload history.
+        // Sumber: PRD_RITATION.OPR_REPORTTIME dengan interval [start, end).
+        $actualTripsByLoader = $this->actualTripsByLoaderForWindow(
+            $startDateTimeCarbon,
+            $endDateTimeCarbon
+        );
+        $details = $details->map(function ($row) use ($actualTripsByLoader) {
+            $loaderId = $this->normalizeLoaderId($row->VHC_ID ?? '');
+            $row->TRIP_ACTUAL = (int)($actualTripsByLoader[$loaderId] ?? 0);
+            return $row;
+        });
+
         $unitStatus = [
             'EX Big' => ['pop' => 14, 'ready' => 14, 'down' => 0],
             'HD OB' => ['pop' => 108, 'ready' => 108, 'down' => 0],
@@ -411,10 +424,47 @@ class OperationalStatusController extends Controller
             ->values()
             ->all();
 
+        // Simpan satu snapshot resmi per jam. Nilai ini TIDAK berubah ketika
+        // ritasi baru masuk setelah laporan disimpan, sampai report di-edit dan disimpan lagi.
+        $slotStart = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $request->report_date.' '.$request->hour_start,
+            'Asia/Makassar'
+        );
+        if ($shiftNo === 7 && $startHour < 7) {
+            $slotStart->addDay();
+        }
+        $slotEnd = $slotStart->copy()->addHour();
+        $snapshotSource = (object)[
+            'HOUR_START' => $request->hour_start,
+            'PAYLOAD_JSON' => json_encode(
+                ['details' => $request->input('details', [])],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            ),
+        ];
+        $slotKey = str_pad($startHour, 2, '0', STR_PAD_LEFT);
+        $snapshotTrips = $this->actualTripTotalsByHour(
+            $request->report_date,
+            $shiftNo,
+            collect([$snapshotSource]),
+            $slotStart,
+            $slotEnd
+        );
+        $obTrips = (int)($snapshotTrips[$slotKey]['OB'] ?? 0);
+        $mudTrips = (int)($snapshotTrips[$slotKey]['MUD'] ?? 0);
+
         $request->merge([
             'units' => $units,
             'operators' => $operators,
             'status' => 'draft',
+            'ritation_snapshot' => [
+                'ob_trip' => $obTrips,
+                'mud_trip' => $mudTrips,
+                'ob_volume' => $obTrips * 42,
+                'mud_volume' => $mudTrips * 30,
+                'source' => 'focus.dbo.PRD_RITATION',
+                'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
+            ],
         ]);
 
         $model = new OperationalStatusHistory();
@@ -890,6 +940,134 @@ class OperationalStatusController extends Controller
             ->all();
     }
 
+    /**
+     * Normalisasi kode EX agar "EX265", " ex265 " tetap cocok.
+     */
+    private function normalizeLoaderId($loaderId): string
+    {
+        return preg_replace('/\s+/', '', strtoupper(trim((string)$loaderId)));
+    }
+
+    /**
+     * Ritasi actual tiap EX pada satu slot jam: [start, end).
+     * Dipakai juga ketika edit history agar field TRIP_ACTUAL tidak membaca 0 lama.
+     *
+     * CATATAN: sumber ini adalah PRD_RITATION, sesuai koneksi controller lama.
+     * Bila telemetry FROM_UNIT berasal dari tabel lain, perlu mapping sumbernya.
+     */
+    private function actualTripsByLoaderForWindow(Carbon $start, Carbon $end): array
+    {
+        return DB::connection('focus')
+            ->table('dbo.PRD_RITATION')
+            ->select('LOD_LOADERID')
+            ->selectRaw('COUNT(*) AS TRIP_ACTUAL')
+            ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
+            ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
+            ->whereNotNull('LOD_LOADERID')
+            ->where('LOD_LOADERID', '<>', '')
+            ->groupBy('LOD_LOADERID')
+            ->get()
+            ->reduce(function (array $counts, $row) {
+                $loaderId = $this->normalizeLoaderId($row->LOD_LOADERID);
+                if ($loaderId !== '') {
+                    $counts[$loaderId] = ($counts[$loaderId] ?? 0) + (int)$row->TRIP_ACTUAL;
+                }
+                return $counts;
+            }, []);
+    }
+
+    /**
+     * Ritasi aktual untuk seluruh shift, dikelompokkan jam serta material.
+     * Tidak menggunakan field trip_actual dalam history yang mungkin belum terisi.
+     *
+     * Klasifikasi material mengikuti detail EX pada history di jam yang sama,
+     * lalu fallback ke REALTIME.MATCHING_FLEET.DISPOSAL bila EX belum ada di payload.
+     */
+    private function actualTripTotalsByHour(
+        string $reportDate,
+        int $shiftNo,
+        $histories,
+        ?Carbon $windowStart = null,
+        ?Carbon $windowEnd = null
+    ): array {
+        $start = $windowStart ?? Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $reportDate . ($shiftNo === 6 ? ' 07:00' : ' 19:00'),
+            'Asia/Makassar'
+        );
+        $end = $windowEnd ?? $start->copy()->addHours(12);
+
+        $fleetMaterials = DB::connection('focus_reporting')
+            ->table('REALTIME.MATCHING_FLEET')
+            ->select('VHC_ID', 'DISPOSAL')
+            ->whereNotNull('VHC_ID')
+            ->where('VHC_ID', '<>', '')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                $loaderId = $this->normalizeLoaderId($item->VHC_ID);
+                $disposal = strtoupper(trim((string)($item->DISPOSAL ?? '')));
+                $material = Str::contains($disposal, ['MUD', 'LUMPUR']) ? 'MUD' : 'OB';
+                return [$loaderId => $material];
+            })->all();
+
+        // Material yang tersimpan pada slot laporan lebih representatif daripada
+        // posisi terkini pada REALTIME.MATCHING_FLEET.
+        $historyMaterials = [];
+        foreach ($histories as $history) {
+            $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
+            $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
+            foreach ($payload['details'] ?? [] as $detail) {
+                $loaderId = $this->normalizeLoaderId($detail['vhc_id'] ?? '');
+                if ($loaderId !== '') {
+                    $historyMaterials[$hourKey][$loaderId] = $this->inferMaterial($detail);
+                }
+            }
+        }
+
+        // Satu query SQL untuk seluruh jam shift: tidak menghitung dari payload.
+        $records = DB::connection('focus')
+            ->table('dbo.PRD_RITATION')
+            ->select('LOD_LOADERID')
+            ->selectRaw('DATEPART(HOUR, OPR_REPORTTIME) AS HOUR_KEY')
+            ->selectRaw('COUNT(*) AS TRIP_COUNT')
+            ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
+            ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
+            ->whereNotNull('LOD_LOADERID')
+            ->where('LOD_LOADERID', '<>', '')
+            ->groupBy('LOD_LOADERID')
+            ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME)')
+            ->get();
+
+        $totals = [];
+        $unmatched = [];
+        foreach ($records as $record) {
+            $hourKey = str_pad((int)$record->HOUR_KEY, 2, '0', STR_PAD_LEFT);
+            $loaderId = $this->normalizeLoaderId($record->LOD_LOADERID);
+            $material = $historyMaterials[$hourKey][$loaderId]
+                ?? $fleetMaterials[$loaderId]
+                ?? null;
+
+            if ($material === null) {
+                // Jangan masukkan EX yang tak dikenal ke OB secara sembarang.
+                $unmatched[$loaderId] = ($unmatched[$loaderId] ?? 0) + (int)$record->TRIP_COUNT;
+                continue;
+            }
+
+            $totals[$hourKey][$material] = ($totals[$hourKey][$material] ?? 0)
+                + (int)$record->TRIP_COUNT;
+        }
+
+        if ($unmatched) {
+            \Illuminate\Support\Facades\Log::warning('Operational Status: ada ritasi loader yang belum dapat diklasifikasikan.', [
+                'report_date' => $reportDate,
+                'shift_no' => $shiftNo,
+                'unmatched_loader_trips' => $unmatched,
+            ]);
+        }
+
+        return $totals;
+    }
+
     private function buildReportData($rows, bool $includeSummary): array
     {
         $first = $rows->first();
@@ -897,6 +1075,17 @@ class OperationalStatusController extends Controller
         $shiftNo = (int)$first->SHIFT_NO;
         $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
+        // History baru memakai snapshot ritasi ketika disimpan.
+        // History lama yang belum punya snapshot memakai query real-time sebagai fallback
+        // sampai history tersebut disimpan kembali.
+        $hasLegacyRows = collect($rows)->contains(function ($history) {
+            $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
+            return !isset($payload['ritation_snapshot']['ob_trip'])
+                || !isset($payload['ritation_snapshot']['mud_trip']);
+        });
+        $actualTripTotals = $hasLegacyRows
+            ? $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows)
+            : [];
         $hourlyRows = [];
 
         foreach ($rows as $history) {
@@ -905,6 +1094,13 @@ class OperationalStatusController extends Controller
             $obDetails = $details->filter(fn($d) => $this->inferMaterial($d) === 'OB');
             $mudDetails = $details->filter(fn($d) => $this->inferMaterial($d) === 'MUD');
             $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
+            $snapshot = $payload['ritation_snapshot'] ?? [];
+            $obTrip = isset($snapshot['ob_trip'])
+                ? (int)$snapshot['ob_trip']
+                : (int)($actualTripTotals[$hourKey]['OB'] ?? 0);
+            $mudTrip = isset($snapshot['mud_trip'])
+                ? (int)$snapshot['mud_trip']
+                : (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
             $hourData = collect($payload['hourly'] ?? [])->first(
                 fn($item) => str_pad((int)($item['hour'] ?? -1), 2, '0', STR_PAD_LEFT) === $hourKey
             ) ?? [];
@@ -912,14 +1108,14 @@ class OperationalStatusController extends Controller
             $hourlyRows[] = [
                 'hour' => substr($history->HOUR_START, 0, 5).'-'.substr($history->HOUR_END, 0, 5),
                 'ob_hd' => (int)$obDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
-                'ob_trip' => (int)$obDetails->sum(fn($d) => (int)($d['trip_actual'] ?? 0)),
-                'ob_volume' => (float)($hourData['production'] ?? $obDetails->sum(fn($d) => (float)($d['pdty_actual'] ?? 0))),
+                'ob_trip' => $obTrip,
+                'ob_volume' => $obTrip * 42, // BCM = Ritasi OB aktual x 42
                 'avg_distance_ob' => isset($hourData['avg_distance_ob'])
                     ? (float)$hourData['avg_distance_ob']
                     : (float)($avgDistanceObByHour[$hourKey] ?? 0),
                 'mud_hd' => (int)$mudDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
-                'mud_trip' => (int)$mudDetails->sum(fn($d) => (int)($d['trip_actual'] ?? 0)),
-                'mud_volume' => (float)($hourData['production_md'] ?? $mudDetails->sum(fn($d) => (float)($d['pdty_actual'] ?? 0))),
+                'mud_trip' => $mudTrip,
+                'mud_volume' => $mudTrip * 30, // M3 = Ritasi MUD aktual x 30
                 'remark' => trim((string)($hourData['remark'] ?? '')),
             ];
         }
