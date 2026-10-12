@@ -191,9 +191,9 @@
 
 /* V5.2 — Hanya angka Ritasi OB/MUD (termasuk angka Total) berwarna hitam.
    Header "Ritasi" tetap putih seperti desain asli. */
-#ops-report-image.ops-v5 .ops-v5-prod-table tbody td.ops-v5-ritasi-value {
+/* #ops-report-image.ops-v5 .ops-v5-prod-table tbody td.ops-v5-ritasi-value {
     color:#000000!important;
-}
+} */
 /* Priority lebih tinggi daripada warna default sel tabel. */
 #ops-report-image.ops-v5 .ops-v5-detail-table tbody td.ops-v5-text-red {
     color: #d60000 !important;
