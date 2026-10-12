@@ -200,8 +200,11 @@ class OperationalStatusController extends Controller
                     DB::raw('COUNT(*) AS TRIP_ACTUAL'),
                     DB::raw('COUNT(DISTINCT VHC_ID) AS HD_ACTUAL'),
                     DB::raw('AVG(CAST(RIT_HAULDISTANCE AS FLOAT)) / 1000.0 AS HAUL_DISTANCE'),
-                    DB::raw('SUM(CAST(RIT_VOLUME AS FLOAT)) AS RIT_VOLUME')
+                    DB::raw('SUM(CAST(RIT_VOLUME AS FLOAT)) AS RIT_VOLUME'),
+                    DB::raw("SUM(CASE WHEN UPPER(LTRIM(RTRIM(LOD_MAT_ID))) = 'OB' THEN 1 ELSE 0 END) AS OB_TRIP_COUNT"),
+                    DB::raw("SUM(CASE WHEN UPPER(LTRIM(RTRIM(LOD_MAT_ID))) = 'MD' THEN 1 ELSE 0 END) AS MUD_TRIP_COUNT")
                 )
+                ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
                 ->where('OPR_SHIFTDATE', $reportDate)
                 ->where('OPR_SHIFTNO', $shiftNo)
                 ->where('OPR_REPORTTIME', '>=', $startDateTimeCarbon->format('Y-m-d H:i:s'))
@@ -227,8 +230,17 @@ class OperationalStatusController extends Controller
                     ? (float)$rit->HAUL_DISTANCE
                     : ((float)($row->AVG_RIT_CYCLEDISTANCE ?? 0) / 1000);
 
-                $disposal = strtoupper(trim((string)($row->DISPOSAL ?? '')));
-                $row->MATERIAL = Str::contains($disposal, ['MUD', 'LUMPUR']) ? 'MUD' : 'OB';
+                // Material EX ditentukan dari LOD_MAT_ID transaksi yang benar-benar terjadi.
+                // Satu EX dapat memiliki campuran OB/MD; untuk baris EX tunggal gunakan
+                // material terbanyak. REKAP PER JAM di bawah tetap menghitung OB/MD terpisah.
+                $obTripCount = (int)($rit->OB_TRIP_COUNT ?? 0);
+                $mudTripCount = (int)($rit->MUD_TRIP_COUNT ?? 0);
+                if ($obTripCount > 0 || $mudTripCount > 0) {
+                    $row->MATERIAL = $mudTripCount > $obTripCount ? 'MUD' : 'OB';
+                } else {
+                    $disposal = strtoupper(trim((string)($row->DISPOSAL ?? '')));
+                    $row->MATERIAL = Str::contains($disposal, ['MUD', 'LUMPUR']) ? 'MUD' : 'OB';
+                }
                 $row->DISTANCE_ACTUAL = round($distance, 2);
                 $row->DT_ACTUAL = (int)($rit->HD_ACTUAL ?? $row->NUNIT ?? 0);
                 $row->TRIP_ACTUAL = (int)($rit->TRIP_ACTUAL ?? 0);
@@ -463,6 +475,7 @@ class OperationalStatusController extends Controller
                 'ob_volume' => $obTrips * 42,
                 'mud_volume' => $mudTrips * 30,
                 'source' => 'focus.dbo.PRD_RITATION',
+                'classification' => 'LOD_MAT_ID',
                 'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
             ],
         ]);
@@ -894,48 +907,26 @@ class OperationalStatusController extends Controller
         return $ratio > 0 && $ratio <= 35.5 ? 'MUD' : 'OB';
     }
 
+    /**
+     * Rata-rata jarak hauling untuk ritasi dengan LOD_MAT_ID = OB.
+     * Material diambil langsung dari sumber PRD_RITATION, bukan nama disposal.
+     */
     private function hourlyAverageObDistance(string $reportDate, int $shiftNo): array
     {
-        $mudLoaderIds = DB::connection('focus_reporting')
-            ->table('REALTIME.MATCHING_FLEET')
-            ->select('VHC_ID', 'DISPOSAL')
-            ->whereNotNull('VHC_ID')
-            ->where('VHC_ID', '<>', '')
-            ->get()
-            ->filter(function ($row) {
-                $disposal = strtoupper(trim((string)($row->DISPOSAL ?? '')));
-
-                return Str::contains($disposal, ['MUD', 'LUMPUR']);
-            })
-            ->pluck('VHC_ID')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
-
-        $query = DB::connection('focus')
+        return DB::connection('focus')
             ->table('dbo.PRD_RITATION')
             ->selectRaw('DATEPART(HOUR, OPR_REPORTTIME) AS HOUR_KEY')
             ->selectRaw('ROUND(AVG(CAST(RIT_HAULDISTANCE AS FLOAT)) / 1000.0, 2) AS AVG_DISTANCE_OB')
             ->where('OPR_SHIFTDATE', $reportDate)
             ->where('OPR_SHIFTNO', $shiftNo)
-            ->whereNotNull('LOD_LOADERID')
+            ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) = 'OB'")
             ->whereNotNull('RIT_HAULDISTANCE')
-            ->where('RIT_HAULDISTANCE', '>=', 500);
-
-        if (!empty($mudLoaderIds)) {
-            $query->whereNotIn('LOD_LOADERID', $mudLoaderIds);
-        }
-
-        return $query
+            ->where('RIT_HAULDISTANCE', '>=', 500)
             ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME)')
             ->get()
             ->mapWithKeys(function ($row) {
                 $hourKey = str_pad((int)$row->HOUR_KEY, 2, '0', STR_PAD_LEFT);
-
-                return [
-                    $hourKey => round((float)($row->AVG_DISTANCE_OB ?? 0), 2),
-                ];
+                return [$hourKey => round((float)($row->AVG_DISTANCE_OB ?? 0), 2)];
             })
             ->all();
     }
@@ -965,6 +956,7 @@ class OperationalStatusController extends Controller
             ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
             ->whereNotNull('LOD_LOADERID')
             ->where('LOD_LOADERID', '<>', '')
+            ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
             ->groupBy('LOD_LOADERID')
             ->get()
             ->reduce(function (array $counts, $row) {
@@ -977,11 +969,13 @@ class OperationalStatusController extends Controller
     }
 
     /**
-     * Ritasi aktual untuk seluruh shift, dikelompokkan jam serta material.
-     * Tidak menggunakan field trip_actual dalam history yang mungkin belum terisi.
+     * Rekap ritasi aktual sesuai LOD_MAT_ID (bukan LOC_NAME / DISPOSAL / mapping EX).
+     * OB = kode 'OB', MUD = kode 'MD'. Kode lainnya tidak dihitung.
+     * Menggunakan window [start, end) dari OPR_REPORTTIME, termasuk transaksi
+     * terlambat yang SYS_CREATEDAT-nya masuk setelah jam laporan.
      *
-     * Klasifikasi material mengikuti detail EX pada history di jam yang sama,
-     * lalu fallback ke REALTIME.MATCHING_FLEET.DISPOSAL bila EX belum ada di payload.
+     * $histories tetap di signature demi kompatibilitas pemanggil sebelumnya,
+     * tetapi tidak dipakai sebagai sumber trip/material.
      */
     private function actualTripTotalsByHour(
         string $reportDate,
@@ -997,72 +991,23 @@ class OperationalStatusController extends Controller
         );
         $end = $windowEnd ?? $start->copy()->addHours(12);
 
-        $fleetMaterials = DB::connection('focus_reporting')
-            ->table('REALTIME.MATCHING_FLEET')
-            ->select('VHC_ID', 'DISPOSAL')
-            ->whereNotNull('VHC_ID')
-            ->where('VHC_ID', '<>', '')
-            ->get()
-            ->mapWithKeys(function ($item) {
-                $loaderId = $this->normalizeLoaderId($item->VHC_ID);
-                $disposal = strtoupper(trim((string)($item->DISPOSAL ?? '')));
-                $material = Str::contains($disposal, ['MUD', 'LUMPUR']) ? 'MUD' : 'OB';
-                return [$loaderId => $material];
-            })->all();
-
-        // Material yang tersimpan pada slot laporan lebih representatif daripada
-        // posisi terkini pada REALTIME.MATCHING_FLEET.
-        $historyMaterials = [];
-        foreach ($histories as $history) {
-            $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
-            $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            foreach ($payload['details'] ?? [] as $detail) {
-                $loaderId = $this->normalizeLoaderId($detail['vhc_id'] ?? '');
-                if ($loaderId !== '') {
-                    $historyMaterials[$hourKey][$loaderId] = $this->inferMaterial($detail);
-                }
-            }
-        }
-
-        // Satu query SQL untuk seluruh jam shift: tidak menghitung dari payload.
         $records = DB::connection('focus')
             ->table('dbo.PRD_RITATION')
-            ->select('LOD_LOADERID')
             ->selectRaw('DATEPART(HOUR, OPR_REPORTTIME) AS HOUR_KEY')
+            ->selectRaw('UPPER(LTRIM(RTRIM(LOD_MAT_ID))) AS MAT_CODE')
             ->selectRaw('COUNT(*) AS TRIP_COUNT')
             ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
             ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
-            ->whereNotNull('LOD_LOADERID')
-            ->where('LOD_LOADERID', '<>', '')
-            ->groupBy('LOD_LOADERID')
-            ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME)')
+            ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
+            ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME), UPPER(LTRIM(RTRIM(LOD_MAT_ID)))')
             ->get();
 
         $totals = [];
-        $unmatched = [];
         foreach ($records as $record) {
             $hourKey = str_pad((int)$record->HOUR_KEY, 2, '0', STR_PAD_LEFT);
-            $loaderId = $this->normalizeLoaderId($record->LOD_LOADERID);
-            $material = $historyMaterials[$hourKey][$loaderId]
-                ?? $fleetMaterials[$loaderId]
-                ?? null;
-
-            if ($material === null) {
-                // Jangan masukkan EX yang tak dikenal ke OB secara sembarang.
-                $unmatched[$loaderId] = ($unmatched[$loaderId] ?? 0) + (int)$record->TRIP_COUNT;
-                continue;
-            }
-
+            $material = $record->MAT_CODE === 'MD' ? 'MUD' : 'OB';
             $totals[$hourKey][$material] = ($totals[$hourKey][$material] ?? 0)
                 + (int)$record->TRIP_COUNT;
-        }
-
-        if ($unmatched) {
-            \Illuminate\Support\Facades\Log::warning('Operational Status: ada ritasi loader yang belum dapat diklasifikasikan.', [
-                'report_date' => $reportDate,
-                'shift_no' => $shiftNo,
-                'unmatched_loader_trips' => $unmatched,
-            ]);
         }
 
         return $totals;
@@ -1075,13 +1020,15 @@ class OperationalStatusController extends Controller
         $shiftNo = (int)$first->SHIFT_NO;
         $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
-        // History baru memakai snapshot ritasi ketika disimpan.
-        // History lama yang belum punya snapshot memakai query real-time sebagai fallback
-        // sampai history tersebut disimpan kembali.
+        // Snapshot lama memakai klasifikasi EX/DISPOSAL dan bisa kehilangan ritasi.
+        // Untuk slot tanpa snapshot LOD_MAT_ID, tampilkan penghitungan baru.
+        // Snapshot baru tetap dibekukan setelah disimpan (tidak di-refresh otomatis).
         $hasLegacyRows = collect($rows)->contains(function ($history) {
             $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            return !isset($payload['ritation_snapshot']['ob_trip'])
-                || !isset($payload['ritation_snapshot']['mud_trip']);
+            $snapshot = $payload['ritation_snapshot'] ?? [];
+            return !isset($snapshot['ob_trip'])
+                || !isset($snapshot['mud_trip'])
+                || ($snapshot['classification'] ?? '') !== 'LOD_MAT_ID';
         });
         $actualTripTotals = $hasLegacyRows
             ? $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows)
@@ -1095,10 +1042,12 @@ class OperationalStatusController extends Controller
             $mudDetails = $details->filter(fn($d) => $this->inferMaterial($d) === 'MUD');
             $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
             $snapshot = $payload['ritation_snapshot'] ?? [];
-            $obTrip = isset($snapshot['ob_trip'])
+            $snapshotValid = ($snapshot['classification'] ?? '') === 'LOD_MAT_ID'
+                && isset($snapshot['ob_trip'], $snapshot['mud_trip']);
+            $obTrip = $snapshotValid
                 ? (int)$snapshot['ob_trip']
                 : (int)($actualTripTotals[$hourKey]['OB'] ?? 0);
-            $mudTrip = isset($snapshot['mud_trip'])
+            $mudTrip = $snapshotValid
                 ? (int)$snapshot['mud_trip']
                 : (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
             $hourData = collect($payload['hourly'] ?? [])->first(
