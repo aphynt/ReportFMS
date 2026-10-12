@@ -1068,6 +1068,44 @@ class OperationalStatusController extends Controller
         return $totals;
     }
 
+    /**
+     * HD aktual UNIK per jam dan material, langsung dari transaksi FOCUS.
+     * Tidak menjumlahkan COUNT(DISTINCT VHC_ID) dari per-EX karena satu HD
+     * bisa melayani lebih dari satu loader di jam yang sama.
+     *
+     * OB = LOD_MAT_ID 'OB'; MUD = LOD_MAT_ID 'MD'.
+     * Window [start,end) dipilih berdasarkan shift agar tepat lintas tengah malam.
+     */
+    private function actualHdTotalsByHour(string $reportDate, int $shiftNo): array
+    {
+        $start = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $reportDate . ($shiftNo === 6 ? ' 07:00' : ' 19:00'),
+            'Asia/Makassar'
+        );
+        $end = $start->copy()->addHours(12);
+
+        $rows = DB::connection('focus')
+            ->table('dbo.PRD_RITATION')
+            ->selectRaw('DATEPART(HOUR, OPR_REPORTTIME) AS HOUR_KEY')
+            ->selectRaw('UPPER(LTRIM(RTRIM(LOD_MAT_ID))) AS MAT_CODE')
+            ->selectRaw('COUNT(DISTINCT VHC_ID) AS HD_UNIK')
+            ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
+            ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
+            ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
+            ->groupByRaw('DATEPART(HOUR, OPR_REPORTTIME), UPPER(LTRIM(RTRIM(LOD_MAT_ID)))')
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $hour = str_pad((int)$row->HOUR_KEY, 2, '0', STR_PAD_LEFT);
+            $material = $row->MAT_CODE === 'MD' ? 'MUD' : 'OB';
+            $result[$hour][$material] = (int)$row->HD_UNIK;
+        }
+
+        return $result;
+    }
+
     private function buildReportData($rows, bool $includeSummary): array
     {
         $first = $rows->first();
@@ -1075,6 +1113,9 @@ class OperationalStatusController extends Controller
         $shiftNo = (int)$first->SHIFT_NO;
         $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
+        // HD per jam dihitung ulang dari FOCUS, terlepas dari nilai DT di history.
+        // Riwayat Ritasi/Volume tetap mengikuti kebijakan snapshot V8.
+        $hdAktualByHour = $this->actualHdTotalsByHour($reportDate, $shiftNo);
         // Snapshot lama memakai klasifikasi EX/DISPOSAL dan bisa kehilangan ritasi.
         // Untuk slot tanpa snapshot LOD_MAT_ID, tampilkan penghitungan baru.
         // Snapshot baru tetap dibekukan setelah disimpan (tidak di-refresh otomatis).
@@ -1111,13 +1152,13 @@ class OperationalStatusController extends Controller
 
             $hourlyRows[] = [
                 'hour' => substr($history->HOUR_START, 0, 5).'-'.substr($history->HOUR_END, 0, 5),
-                'ob_hd' => (int)$obDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
+                'ob_hd' => (int)($hdAktualByHour[$hourKey]['OB'] ?? 0),
                 'ob_trip' => $obTrip,
                 'ob_volume' => $obTrip * 42, // BCM = Ritasi OB aktual x 42
                 'avg_distance_ob' => isset($hourData['avg_distance_ob'])
                     ? (float)$hourData['avg_distance_ob']
                     : (float)($avgDistanceObByHour[$hourKey] ?? 0),
-                'mud_hd' => (int)$mudDetails->sum(fn($d) => (int)($d['dt_actual'] ?? 0)),
+                'mud_hd' => (int)($hdAktualByHour[$hourKey]['MUD'] ?? 0),
                 'mud_trip' => $mudTrip,
                 'mud_volume' => $mudTrip * 30, // M3 = Ritasi MUD aktual x 30
                 'remark' => trim((string)($hourData['remark'] ?? '')),
