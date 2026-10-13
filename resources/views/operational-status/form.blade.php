@@ -223,7 +223,20 @@
                     <tbody>
                         @forelse($details as $i => $row)
                         <tr>
-                            <td><span class="pit-pill">{{ str_replace('PIT ','',$row->PIT??'-') }}</span><input type="hidden" name="details[{{ $i }}][pit]" value="{{ $row->PIT }}"></td>
+                            <td>
+                                @php
+                                    $pitValue = trim((string)($row->PIT ?? ''));
+                                    $pitBelumAda = in_array(strtoupper($pitValue), ['', '-', 'BELUM TERPETAKAN'], true);
+                                @endphp
+                                @if($pitBelumAda)
+                                    <input type="text" class="ops-input manual center" name="details[{{ $i }}][pit]"
+                                        value="" placeholder="SM-B1 / SM-B2" title="Lengkapi area EX yang baru tercatat di ritasi"
+                                        style="width:105px;min-width:105px;padding-left:5px;padding-right:5px">
+                                @else
+                                    <span class="pit-pill">{{ str_replace('PIT ', '', $row->PIT) }}</span>
+                                    <input type="hidden" name="details[{{ $i }}][pit]" value="{{ $row->PIT }}">
+                                @endif
+                            </td>
                             <td><div class="unit-cell"><span>EX</span><strong>{{ str_replace('EX','',$row->VHC_ID) }}</strong></div><input type="hidden" name="details[{{ $i }}][vhc_id]" value="{{ $row->VHC_ID }}"><input type="hidden" name="details[{{ $i }}][material]" value="{{ $row->MATERIAL ?? 'OB' }}"></td>
                             <td class="center"><span class="readonly-value">{{ number_format($row->DISTANCE_ACTUAL??0,2) }} <small>km</small></span><input type="hidden" name="details[{{ $i }}][distance_actual]" value="{{ $row->DISTANCE_ACTUAL??0 }}"></td>
                             <td class="center"><span class="readonly-value">{{ $row->DT_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][dt_actual]" value="{{ $row->DT_ACTUAL??0 }}"></td>
@@ -234,7 +247,10 @@
                             <td><input type="number" class="ops-input manual center pdty-plan" id="pdty_plan_{{ $i }}" name="details[{{ $i }}][pdty_plan]" value="{{ $row->PDTY_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="ref-pill">{{ $row->PLAN_REFERENCE??'-' }}</span><input type="hidden" name="details[{{ $i }}][plan_reference]" value="{{ $row->PLAN_REFERENCE }}"></td>
                             <td><select class="ops-input manual" name="details[{{ $i }}][wd_status]"><option value="">-</option><option value="IN" {{ ($row->WD_STATUS??'')==='IN'?'selected':'' }}>IN</option><option value="OUT HR" {{ ($row->WD_STATUS??'')==='OUT HR'?'selected':'' }}>OUT HR</option><option value="IPD" {{ ($row->WD_STATUS??'')==='IPD'?'selected':'' }}>IPD</option><option value="OPD" {{ ($row->WD_STATUS??'')==='OPD'?'selected':'' }}>OPD</option></select></td>
-                            <td><input class="ops-input manual wide" name="details[{{ $i }}][remark]" value="{{ $row->REMARK??'' }}" ></td>
+                            <td><input class="ops-input manual wide" name="details[{{ $i }}][remark]"
+                                value="{{ $row->REMARK ?? '' }}"
+                                placeholder="{{ !empty($row->IS_NEW_LOADER) ? 'Contoh: Start operasi jam 09.50' : 'Keterangan...' }}"
+                                title="Keterangan CCR untuk laporan dan gambar WhatsApp"></td>
                         </tr>
                         @empty
                         <tr><td colspan="12" class="ops-empty"><i class="fas fa-truck"></i><strong>Data fleet belum tersedia</strong></td></tr>

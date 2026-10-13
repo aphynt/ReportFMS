@@ -293,7 +293,7 @@ class OperationalStatusController extends Controller
             $endDateTimeCarbon
         );
         $details = $details->map(function ($row) use ($actualByExMaterial) {
-            $loaderId = $this->normalizeLoaderId($row->VHC_ID ?? '');
+            $loaderId = $this->normalizeReportLoaderId($row->VHC_ID ?? '');
             $stats = $actualByExMaterial[$loaderId] ?? [];
             $obTrip = (int)($stats['OB']['trips'] ?? 0);
             $mudTrip = (int)($stats['MUD']['trips'] ?? 0);
@@ -308,6 +308,69 @@ class OperationalStatusController extends Controller
                 : $obTrip * 42;
             return $row;
         });
+
+        // Unit yang baru mulai ritasi dalam jam ini mungkin belum masuk MATCHING_FLEET,
+        // atau belum ada pada details history lama. Tetap sediakan baris FORM agar CCR
+        // bisa mengisi Area, Plan, W/D, dan keterangan sebelum gambar dikirim ke WA.
+        $knownLoaders = $details->mapWithKeys(function ($row) {
+            $loaderId = $this->normalizeReportLoaderId($row->VHC_ID ?? '');
+            return $loaderId !== '' ? [$loaderId => true] : [];
+        })->all();
+
+        $priorDetails = collect($saved['details'] ?? $carrySaved['details'] ?? [])
+            ->mapWithKeys(function ($detail) {
+                $key = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
+                return $key !== '' ? [$key => $detail] : [];
+            });
+
+        // Saat mengedit slot lama, transaksi yang tiba terlambat tetap ditambahkan
+        // ke form; angka snapshot resmi akan diperbarui setelah CCR menekan Simpan.
+        foreach ($actualByExMaterial as $rawLoaderId => $materials) {
+            $loaderId = $this->normalizeReportLoaderId($rawLoaderId);
+            if ($loaderId === '' || $loaderId === '__UNASSIGNED__' || isset($knownLoaders[$loaderId])) {
+                continue;
+            }
+
+            $obTrips = (int)($materials['OB']['trips'] ?? 0);
+            $mudTrips = (int)($materials['MUD']['trips'] ?? 0);
+            if ($obTrips + $mudTrips === 0) {
+                continue;
+            }
+
+            $prior = $priorDetails->get($loaderId, []);
+            $material = $mudTrips > $obTrips ? 'MUD' : 'OB';
+            $pit = trim((string)($prior['pit'] ?? ''));
+            if (strtoupper($pit) === 'BELUM TERPETAKAN' || $pit === '-') {
+                $pit = '';
+            }
+
+            $details->push((object)[
+                'PIT' => $pit,
+                'VHC_ID' => $loaderId,
+                'MATERIAL' => $material,
+                'DISTANCE_ACTUAL' => (float)($prior['distance_actual'] ?? 0),
+                'DT_ACTUAL' => (int)(($materials['OB']['hd'] ?? 0) + ($materials['MUD']['hd'] ?? 0)),
+                'DT_PLAN' => $prior['dt_plan'] ?? null,
+                'TRIP_ACTUAL' => $obTrips + $mudTrips,
+                'TRIP_PLAN' => $prior['trip_plan'] ?? null,
+                'PDTY_ACTUAL' => $material === 'MUD' ? $mudTrips * 30 : $obTrips * 42,
+                'PDTY_PLAN' => $prior['pdty_plan'] ?? null,
+                'PLAN_REFERENCE' => $prior['plan_reference'] ?? null,
+                'WD_STATUS' => $prior['wd_status'] ?? null,
+                'REMARK' => $prior['remark'] ?? '',
+                'IS_NEW_LOADER' => true,
+            ]);
+            $knownLoaders[$loaderId] = true;
+        }
+
+        // Pertahankan hanya satu entri per EX; jangan gandakan baris dari fleet
+        // realtime dan transaksi historis (mis. EX277 ketika baru operasi).
+        $details = $details->unique(function ($row) {
+            return $this->normalizeReportLoaderId($row->VHC_ID ?? '');
+        })->sort(function ($a, $b) {
+            $pitDiff = strnatcasecmp((string)($a->PIT ?? ''), (string)($b->PIT ?? ''));
+            return $pitDiff !== 0 ? $pitDiff : strnatcasecmp((string)$a->VHC_ID, (string)$b->VHC_ID);
+        })->values();
 
         $unitStatus = [
             'EX Big' => ['pop' => 14, 'ready' => 14, 'down' => 0],
@@ -472,7 +535,7 @@ class OperationalStatusController extends Controller
         // Hitung ulang di server agar snapshot selalu sesuai query yang sama.
         $submittedDetails = collect($request->input('details', []))
             ->map(function ($detail) use ($snapshotByExMaterial) {
-                $loaderId = $this->normalizeLoaderId($detail['vhc_id'] ?? '');
+                $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
                 $materials = $snapshotByExMaterial[$loaderId] ?? [];
                 $ob = (int)($materials['OB']['trips'] ?? 0);
                 $mud = (int)($materials['MUD']['trips'] ?? 0);
@@ -999,7 +1062,7 @@ class OperationalStatusController extends Controller
 
         $byEx = [];
         foreach ($records as $record) {
-            $loaderId = $this->normalizeLoaderId($record->LOD_LOADERID);
+            $loaderId = $this->normalizeReportLoaderId($record->LOD_LOADERID);
             $loaderId = $loaderId !== '' ? $loaderId : '__UNASSIGNED__';
             $material = $record->MAT_CODE === 'MD' ? 'MUD' : 'OB';
             $byEx[$loaderId][$material]['trips'] =
