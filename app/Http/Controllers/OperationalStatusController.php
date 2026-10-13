@@ -297,6 +297,15 @@ class OperationalStatusController extends Controller
             $stats = $actualByExMaterial[$loaderId] ?? [];
             $obTrip = (int)($stats['OB']['trips'] ?? 0);
             $mudTrip = (int)($stats['MUD']['trips'] ?? 0);
+            // Ambil jarak rata-rata aktual dari ritasi FOCUS pada slot terpilih,
+            // tanpa mengambil jarak history jam sebelumnya.
+            $distanceMeters = (float)($stats['OB']['haul_meters_valid'] ?? 0)
+                + (float)($stats['MUD']['haul_meters_valid'] ?? 0);
+            $distanceCount = (int)($stats['OB']['haul_count_valid'] ?? 0)
+                + (int)($stats['MUD']['haul_count_valid'] ?? 0);
+            if ($distanceCount > 0) {
+                $row->DISTANCE_ACTUAL = round($distanceMeters / $distanceCount / 1000.0, 2);
+            }
             $row->TRIP_ACTUAL = $obTrip + $mudTrip;
             // Satu baris Form per EX: pilih material dominan berdasarkan transaksi.
             // Jika campuran OB+MD, report-image menampilkan dua baris dari snapshot.
@@ -348,7 +357,18 @@ class OperationalStatusController extends Controller
                 'PIT' => $pit,
                 'VHC_ID' => $loaderId,
                 'MATERIAL' => $material,
-                'DISTANCE_ACTUAL' => (float)($prior['distance_actual'] ?? 0),
+                'DISTANCE_ACTUAL' => (
+                    ((int)($materials['OB']['haul_count_valid'] ?? 0)
+                        + (int)($materials['MUD']['haul_count_valid'] ?? 0)) > 0
+                    ? round((
+                        (float)($materials['OB']['haul_meters_valid'] ?? 0)
+                        + (float)($materials['MUD']['haul_meters_valid'] ?? 0)
+                    ) / (
+                        (int)($materials['OB']['haul_count_valid'] ?? 0)
+                        + (int)($materials['MUD']['haul_count_valid'] ?? 0)
+                    ) / 1000.0, 2)
+                    : (float)($prior['distance_actual'] ?? 0)
+                ),
                 'DT_ACTUAL' => (int)(($materials['OB']['hd'] ?? 0) + ($materials['MUD']['hd'] ?? 0)),
                 'DT_PLAN' => $prior['dt_plan'] ?? null,
                 'TRIP_ACTUAL' => $obTrips + $mudTrips,
@@ -1053,6 +1073,8 @@ class OperationalStatusController extends Controller
             ->selectRaw('UPPER(LTRIM(RTRIM(LOD_MAT_ID))) AS MAT_CODE')
             ->selectRaw('COUNT(*) AS TRIP_COUNT')
             ->selectRaw('COUNT(DISTINCT VHC_ID) AS HD_ACTUAL')
+            ->selectRaw('SUM(CASE WHEN RIT_HAULDISTANCE >= 500 THEN CAST(RIT_HAULDISTANCE AS FLOAT) ELSE 0 END) AS HAUL_METERS_VALID')
+            ->selectRaw('SUM(CASE WHEN RIT_HAULDISTANCE >= 500 THEN 1 ELSE 0 END) AS HAUL_COUNT_VALID')
             ->where('OPR_REPORTTIME', '>=', $start->format('Y-m-d H:i:s'))
             ->where('OPR_REPORTTIME', '<', $end->format('Y-m-d H:i:s'))
             ->whereRaw("UPPER(LTRIM(RTRIM(LOD_MAT_ID))) IN ('OB', 'MD')")
@@ -1069,6 +1091,13 @@ class OperationalStatusController extends Controller
                 (int)($byEx[$loaderId][$material]['trips'] ?? 0) + (int)$record->TRIP_COUNT;
             $byEx[$loaderId][$material]['hd'] =
                 (int)($byEx[$loaderId][$material]['hd'] ?? 0) + (int)$record->HD_ACTUAL;
+            // Simpan jumlah jarak dalam meter dan jumlah ritasi dengan jarak valid.
+            // AVG baru dihitung setelah loader ID dinormalisasi untuk menghindari
+            // rata-rata dari rata-rata jika variasi penulisan EX digabung.
+            $byEx[$loaderId][$material]['haul_meters_valid'] =
+                (float)($byEx[$loaderId][$material]['haul_meters_valid'] ?? 0) + (float)($record->HAUL_METERS_VALID ?? 0);
+            $byEx[$loaderId][$material]['haul_count_valid'] =
+                (int)($byEx[$loaderId][$material]['haul_count_valid'] ?? 0) + (int)($record->HAUL_COUNT_VALID ?? 0);
         }
         return $byEx;
     }
@@ -1188,36 +1217,18 @@ class OperationalStatusController extends Controller
         // HD per jam dihitung ulang dari FOCUS, terlepas dari nilai DT di history.
         // Riwayat Ritasi/Volume tetap mengikuti kebijakan snapshot V8.
         $hdAktualByHour = $this->actualHdTotalsByHour($reportDate, $shiftNo);
-        // Snapshot lama memakai klasifikasi EX/DISPOSAL dan bisa kehilangan ritasi.
-        // Untuk slot tanpa snapshot LOD_MAT_ID, tampilkan penghitungan baru.
-        // Snapshot baru tetap dibekukan setelah disimpan (tidak di-refresh otomatis).
-        $hasLegacyRows = collect($rows)->contains(function ($history) {
-            $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            $snapshot = $payload['ritation_snapshot'] ?? [];
-            return !isset($snapshot['ob_trip'])
-                || !isset($snapshot['mud_trip'])
-                || ($snapshot['classification'] ?? '') !== 'LOD_MAT_ID';
-        });
-        $actualTripTotals = $hasLegacyRows
-            ? $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows)
-            : [];
+        // V12: Preview WA/PNG selalu mengambil ritasi aktual terkini dari FOCUS,
+        // termasuk transaksi yang masuk setelah history disimpan. History resmi
+        // di database TIDAK diubah oleh preview; snapshot diperbarui saat CCR
+        // membuka Edit dan menekan Simpan.
+        $actualTripTotals = $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows);
         $hourlyRows = [];
 
         foreach ($rows as $history) {
             $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            $details = collect($payload['details'] ?? []);
-            $obDetails = $details->filter(fn($d) => $this->inferMaterial($d) === 'OB');
-            $mudDetails = $details->filter(fn($d) => $this->inferMaterial($d) === 'MUD');
             $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
-            $snapshot = $payload['ritation_snapshot'] ?? [];
-            $snapshotValid = ($snapshot['classification'] ?? '') === 'LOD_MAT_ID'
-                && isset($snapshot['ob_trip'], $snapshot['mud_trip']);
-            $obTrip = $snapshotValid
-                ? (int)$snapshot['ob_trip']
-                : (int)($actualTripTotals[$hourKey]['OB'] ?? 0);
-            $mudTrip = $snapshotValid
-                ? (int)$snapshot['mud_trip']
-                : (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
+            $obTrip = (int)($actualTripTotals[$hourKey]['OB'] ?? 0);
+            $mudTrip = (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
             $hourData = collect($payload['hourly'] ?? [])->first(
                 fn($item) => str_pad((int)($item['hour'] ?? -1), 2, '0', STR_PAD_LEFT) === $hourKey
             ) ?? [];
@@ -1240,8 +1251,8 @@ class OperationalStatusController extends Controller
         $lastPayload = json_decode($last->PAYLOAD_JSON, true) ?: [];
 
         // Bagian Produksi Perjam hanya menampilkan EX yang mempunyai ritasi/volume
-        // pada interval laporan terakhir. Snapshot tetap menjadi sumber resmi
-        // bila tersedia; untuk history lama gunakan transaksi aktual slot itu.
+        // pada interval laporan terakhir. Preview mengambil transaksi LIVE FOCUS,
+        // bukan daftar EX yang lama dalam snapshot/history.
         $lastHourStart = substr((string) $last->HOUR_START, 0, 5);
         $lastSlotStart = Carbon::createFromFormat(
             'Y-m-d H:i',
@@ -1253,10 +1264,9 @@ class OperationalStatusController extends Controller
         }
         $lastSlotEnd = $lastSlotStart->copy()->addHour();
 
-        $snapshotDetails = $lastPayload['ritation_snapshot']['loader_material_trips'] ?? null;
-        if (!is_array($snapshotDetails)) {
-            $snapshotDetails = $this->actualTripsByExMaterialForWindow($lastSlotStart, $lastSlotEnd);
-        }
+        // Satu sumber data untuk header Produksi dan detail EX: FOCUS OPR_REPORTTIME.
+        // Histori tetap menjadi sumber Area, Plan, W/D, Remark, Status Unit/Operator.
+        $snapshotDetails = $this->actualTripsByExMaterialForWindow($lastSlotStart, $lastSlotEnd);
 
         // Normalisasi kode EX di snapshot agar EX269 / ex269 / 269 tidak
         // dianggap sebagai tiga loader berbeda pada hasil laporan.
@@ -1276,6 +1286,10 @@ class OperationalStatusController extends Controller
                     (int)($activeLoaders[$loaderId][$material]['trips'] ?? 0) + $trips;
                 $activeLoaders[$loaderId][$material]['hd'] =
                     (int)($activeLoaders[$loaderId][$material]['hd'] ?? 0) + (int)($source['hd'] ?? 0);
+                $activeLoaders[$loaderId][$material]['haul_meters_valid'] =
+                    (float)($activeLoaders[$loaderId][$material]['haul_meters_valid'] ?? 0) + (float)($source['haul_meters_valid'] ?? 0);
+                $activeLoaders[$loaderId][$material]['haul_count_valid'] =
+                    (int)($activeLoaders[$loaderId][$material]['haul_count_valid'] ?? 0) + (int)($source['haul_count_valid'] ?? 0);
             }
         }
 
@@ -1359,13 +1373,21 @@ class OperationalStatusController extends Controller
                 if ($trips <= 0) {
                     continue;
                 }
+                // Jarak dipakai dari transaksi FOCUS jam yang sama, material sama.
+                // Jika tidak ada RIT_HAULDISTANCE >= 500 meter, tampilkan '-'
+                // pada Blade, bukan menganggap jarak nyata = nol.
+                $validDistanceCount = (int)($materials[$material]['haul_count_valid'] ?? 0);
+                $actualDistanceKm = $validDistanceCount > 0
+                    ? round((float)($materials[$material]['haul_meters_valid'] ?? 0)
+                        / $validDistanceCount / 1000.0, 2)
+                    : null;
                 $detailRows->push([
                     'material' => $material,
                     'area' => $area,
                     'ex' => $loaderId === '__UNASSIGNED__'
                         ? '-'
                         : preg_replace('/^EX/i', '', $loaderId),
-                    'distance' => (float)($detail['distance_actual'] ?? 0),
+                    'distance' => $actualDistanceKm,
                     'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
                     'dt_plan' => ($detail['dt_plan'] ?? '') !== '' ? $detail['dt_plan'] : '-',
                     'trip_actual' => $trips,
@@ -1451,6 +1473,7 @@ class OperationalStatusController extends Controller
             'shift_name' => $shiftNo === 6 ? 'SIANG' : 'MALAM',
             'shift_time' => $shiftNo === 6 ? '06:30-18:30' : '18:30-06:30',
             'latest_hour' => substr($last->HOUR_START, 0, 5).' - '.substr($last->HOUR_END, 0, 5),
+            'production_data_source' => 'FOCUS_PRD_RITATION_LIVE',
             'hourly' => $hourlyRows,
             'totals' => $totals,
             'details' => $detailRows,
