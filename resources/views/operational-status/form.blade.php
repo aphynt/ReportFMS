@@ -36,7 +36,7 @@
     <div class="ops-heading">
         <div>
             <h1>Operational Status</h1>
-            <p>Monitoring dan penyempurnaan laporan operasional produksi.</p>
+            <p>Monitoring produksi, kondisi unit, dan laporan per jam.</p>
         </div>
         <div class="ops-heading-right">
             @if(!empty($latestCreatedTime))
@@ -138,7 +138,7 @@
             <div class="ops-panel-head">
                 <div><span>PRODUCTION</span>
                     <h3>Produksi Per Jam</h3>
-                    <p>Actual, plan, achievement dan cumulative production.</p>
+                    <p>Perbandingan hasil aktual, target, dan total produksi setiap jam.</p>
                 </div>
                 <div class="ops-auto"><i class="fas fa-database"></i>FMS Auto</div>
             </div>
@@ -192,7 +192,7 @@
             <div class="ops-panel-head">
                 <div><span>FLEET MATCHING</span>
                     <h3>Produksi Per Excavator</h3>
-                    <p>Data actual dari FMS, kolom plan dan keterangan dapat dilengkapi.</p>
+                    <p>Angka aktual dari FMS. Kolom berwarna kuning muda dapat diisi manual.</p>
                 </div>
                 <div class="ops-legend"><span><i class="dot auto"></i>FMS</span><span><i class="dot manual"></i>User
                         Input</span></div>
@@ -274,7 +274,7 @@
                 <div class="ops-panel-head compact">
                     <div><span>FLEET</span>
                         <h3>Status Unit</h3>
-                        <p>Populasi, ready dan down.</p>
+                        <p>Jumlah unit tersedia, siap operasi, dan mengalami gangguan.</p>
                     </div>
                 </div>
                 <div class="ops-table-wrap">
@@ -305,7 +305,7 @@
                 <div class="ops-panel-head compact">
                     <div><span>MANPOWER</span>
                         <h3>Status Operator</h3>
-                        <p>Kehadiran dan distribusi operator.</p>
+                        <p>Jumlah operator hadir, sedang operasi, dan cadangan.</p>
                     </div>
                 </div>
                 <div class="ops-table-wrap">
@@ -1222,6 +1222,128 @@
         width: 34%
     }
 
+</style>
+
+
+<style id="ops-readable-ui">
+:root {
+    --navy: #243b53;
+    --blue: #285b87;
+    --text: #253545;
+    --muted: #566575;
+    --line: #d8dfe6;
+    --soft: #f5f6f8;
+    --manual: #fff9e9;
+}
+body { background: #f2f4f6; }
+.ops-page { max-width: 1800px; margin-inline: auto; padding: 26px 24px 90px; color: var(--text); font: 15px/1.5 "Segoe UI", Arial, sans-serif; }
+.ops-heading { gap: 16px; align-items: center; margin-bottom: 21px; }
+.ops-heading h1 { margin: 0 0 4px; font-size: 28px; font-weight: 700; letter-spacing: 0; color: #1e3040; }
+.ops-heading p, .ops-panel-head p { font-size: 14px; line-height: 1.5; color: var(--muted); }
+.ops-heading-right { flex-wrap: wrap; }
+.ops-sync, .ops-version, .ops-continue { border-radius: 6px; padding: 10px 12px; }
+.ops-sync small, .ops-version, .ops-continue { font-size: 12px; }
+.ops-sync strong { font-size: 14px; }
+.ops-filter, .ops-panel, .ops-kpi { border: 1px solid var(--line); box-shadow: none; background: #fff; }
+.ops-filter { gap: 15px; padding: 18px; margin-bottom: 18px; border-radius: 8px; }
+.ops-field label { font-size: 14px; font-weight: 600; color: #36495b; margin-bottom: 7px; }
+.ops-control-wrap { height: 46px; border-color: #bdc7d1; border-radius: 6px; }
+.ops-control-wrap input, .ops-control-wrap select { height: 44px; font-size: 15px; color: #263b50; }
+.ops-control-wrap i { font-size: 14px; color: #63778b; }
+.ops-control-wrap:focus-within { border-color: #497aa6; box-shadow: 0 0 0 2px rgba(40,91,135,.12); }
+.ops-button { min-height: 46px; height: auto; padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.ops-button-primary { background: #285b87; }
+.ops-button-primary:hover { background: #204b70; }
+.ops-button:focus-visible, .ops-input:focus-visible, .ops-textarea:focus-visible { outline: 2px solid #447cae; outline-offset: 2px; }
+.ops-kpis { gap: 14px; margin-bottom: 18px; }
+.ops-kpi { padding: 18px 20px; min-height: 142px; border-radius: 8px; border-left: 4px solid #477b9f; }
+.ops-kpi:nth-child(2) { border-left-color: #7e8490; }
+.ops-kpi:nth-child(3) { border-left-color: #4b8167; }
+.ops-kpi:nth-child(4) { border-left-color: #ad8950; }
+.ops-kpi-head { margin-bottom: 9px; }
+.ops-kpi-head > span { font-size: 12px; letter-spacing: .1px; color: #627182; }
+.ops-kpi-icon { width: 36px; height: 36px; border-radius: 6px; font-size: 15px; }
+.ops-kpi > small { font-size: 14px; color: #526475; }
+.ops-kpi h2 { font-size: 30px; line-height: 1.25; font-weight: 700; letter-spacing: 0; margin: 6px 0; font-variant-numeric: tabular-nums; }
+.ops-kpi h2 em { font-size: 13px; font-weight: 600; color: #586b7b; }
+.ops-kpi-foot { font-size: 12px; color: #617182; }
+.ops-progress { height: 7px; }
+.ops-panel { border-radius: 8px; margin-bottom: 18px; }
+.ops-panel-head { padding: 18px 20px; gap: 14px; background: #fafbfc; border-bottom: 1px solid var(--line); }
+.ops-panel-head.compact { min-height: 83px; }
+.ops-panel-head > div > span, .ops-kicker { font-size: 11px; letter-spacing: .4px; color: #617487; }
+.ops-panel-head h3 { margin: 3px 0; font-size: 19px; font-weight: 700; color: #253c50; }
+.ops-auto, .ops-legend { font-size: 12px; font-weight: 600; }
+.ops-legend { flex-wrap: wrap; }
+.ops-table-wrap { overflow: auto; max-width: 100%; scrollbar-color: #a9b5bf #edf0f2; }
+.ops-table { font-size: 14px; line-height: 1.5; border-collapse: separate; border-spacing: 0; }
+.ops-table th { position: sticky; top: 0; z-index: 2; padding: 13px 12px; background: #eaf0f4; color: #294359; border-bottom: 1px solid #cbd6df; font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.ops-table td { padding: 12px; color: #2b4053; border-bottom: 1px solid #e4e8ec; }
+.ops-table tbody tr:nth-child(even) { background: #f8f9fa; }
+.ops-table tbody tr:hover { background: #eff5f9; }
+.ops-table .strong, .ops-hour, .readonly-value { font-weight: 700; }
+.ops-hour { font-size: 14px; white-space: nowrap; }
+.hourly-production-main { font-size: 16px; }
+.hourly-distance { font-size: 12px; color: #586e80; }
+.ops-table tbody tr.current-row { background: #eaf3f9 !important; }
+.current-row td:first-child { box-shadow: inset 3px 0 #487da5; }
+.ops-ach { min-width: 76px; padding: 7px 8px; border-radius: 5px; font-size: 13px; }
+.ops-input { min-width: 65px; height: 43px; padding: 0 10px; border-radius: 5px; border: 1px solid #bbc7d1; font-size: 14px; font-weight: 600; color: #2a3c4e; }
+.ops-input.manual { background: #fff9e9; border: 1px solid #d7bb7a; }
+.ops-input.manual:focus { border-color: #9c7b36; box-shadow: 0 0 0 2px rgba(166,132,68,.13); }
+.ops-input[readonly] { background: #eff2f4; color: #445669; }
+.ops-input.wide { min-width: 250px; }
+.manual-head { background: #f9efd8 !important; color: #69552e !important; }
+.pit-pill, .ref-pill { border-radius: 5px; padding: 6px 8px; font-size: 13px; }
+.unit-cell { gap: 8px; white-space: nowrap; }
+.unit-cell span { width: 32px; height: 32px; font-size: 11px; border-radius: 5px; }
+.unit-cell strong { font-size: 16px; }
+.readonly-value { font-size: 15px; white-space: nowrap; }
+.readonly-value small { font-size: 12px; }
+.ex-table { min-width: 1320px; }
+.ex-table th:first-child, .ex-table td:first-child { position: sticky; left: 0; z-index: 3; box-shadow: 1px 0 0 #d8e0e6; }
+.ex-table th:first-child { z-index: 5; background: #eaf0f4; }
+.ex-table td:first-child { background: #fff; }
+.ex-table tbody tr:nth-child(even) td:first-child { background: #f8f9fa; }
+.ex-table tbody tr:hover td:first-child { background: #eff5f9; }
+.small-table th, .small-table td { padding: 12px 14px; }
+.small-table td:first-child strong { font-size: 14px; }
+.ops-textarea-wrap { padding: 18px; }
+.ops-textarea { display: block; width: 100%; height: 480px; min-height: 420px; padding: 17px 18px; font: 15px/1.75 "Segoe UI", Arial, sans-serif; color: #24384a; background: #fff; border: 1px solid #bdc7d1; border-radius: 6px; resize: vertical; }
+.ops-textarea:focus { border-color: #497aa6; box-shadow: 0 0 0 2px rgba(40,91,135,.12); }
+.ops-savebar { border: 1px solid #cbd4dc; border-radius: 8px; padding: 14px 17px; box-shadow: 0 4px 16px rgba(25,45,63,.12); }
+.save-progress small { font-size: 13px; color: #44596b; }
+.save-progress strong { font-size: 14px; }
+.completion-track { height: 8px; }
+.save-actions { gap: 9px; flex-wrap: wrap; }
+.wa-modal { border-radius: 8px; }
+.wa-modal .modal-title { font-size: 20px; font-weight: 700; }
+.wa-modal .modal-header { padding: 20px; }
+.wa-kicker, .wa-section-title { font-size: 12px; }
+.wa-toolbar { font-size: 14px; flex-wrap: wrap; }
+.wa-history-row { border-radius: 6px; padding: 12px; }
+.wa-history-main strong { font-size: 15px; }
+.wa-history-main small { font-size: 12px; }
+.wa-loading, .wa-empty, .wa-generating { font-size: 14px; }
+.wa-preview-stage { border-radius: 6px; }
+.wa-modal .modal-footer { gap: 9px; }
+@media (max-width: 1200px) {
+    .ops-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ops-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ops-two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+    .ops-page { padding: 16px 12px 45px; }
+    .ops-heading { align-items: flex-start; }
+    .ops-filter, .ops-kpis { grid-template-columns: 1fr; }
+    .ops-panel-head { padding: 15px; align-items: flex-start; flex-wrap: wrap; }
+    .ops-panel-head h3 { font-size: 18px; }
+    .ops-savebar { position: relative; bottom: auto; }
+    .save-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .save-actions .ops-button { width: 100%; white-space: normal; }
+    .ops-textarea { height: 440px; min-height: 380px; }
+    .wa-modal .modal-footer .ops-button { width: 100%; }
+}
 </style>
 
 @include('layout.footer')
