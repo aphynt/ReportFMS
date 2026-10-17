@@ -164,7 +164,7 @@
                             $isCurrent=str_pad((int)$row->HOUR,2,'0',STR_PAD_LEFT)===str_pad((int)substr($hourStart,0,2),2,'0',STR_PAD_LEFT);
                         @endphp
                         <tr class="{{ $isCurrent ? 'current-row' : '' }}">
-                            <td><div class="ops-hour">@if($isCurrent)<span></span>@endif{{ str_pad((int)$row->HOUR,2,'0',STR_PAD_LEFT) }}:00</div>
+                            <td><div class="ops-hour">@if($isCurrent)<span></span>@endif{{ str_pad((int)$row->HOUR,2,'0',STR_PAD_LEFT) }}:00 - {{ str_pad(((int)$row->HOUR + 1) % 24,2,'0',STR_PAD_LEFT) }}:00</div>
                                 <input type="hidden" name="hourly[{{ $i }}][num]" value="{{ $row->NUM ?? '' }}"><input type="hidden" name="hourly[{{ $i }}][hour]" value="{{ $row->HOUR }}"><input type="hidden" name="hourly[{{ $i }}][sort]" value="{{ $row->SORT ?? '' }}">
                             </td>
                             <td class="num strong">

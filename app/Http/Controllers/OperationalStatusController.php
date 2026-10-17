@@ -119,6 +119,7 @@ class OperationalStatusController extends Controller
             $latestCreatedTime = $history->UPDATED_AT;
         } else {
             $snapshotDate = $startDateTimeCarbon->format('Y-m-d');
+
             $latestCreatedTime = DB::connection('focus_reporting')
                 ->table('DASHBOARD.PRODUCTION_PER_HOUR')
                 ->whereDate('CREATED_TIME', $snapshotDate)
@@ -127,7 +128,20 @@ class OperationalStatusController extends Controller
             if ($latestCreatedTime) {
                 $hourly = DB::connection('focus_reporting')
                     ->table('DASHBOARD.PRODUCTION_PER_HOUR')
-                    ->select('NUM', 'PIT', 'HOUR', 'SORT', 'PRODUCTION', 'PLAN_PRODUCTION', 'ACH', 'PRODUCTION_CUM', 'PLAN_PRODUCTION_CUM', 'ACH_CUM', 'PRODUCTION_MD', 'CREATED_TIME')
+                    ->select(
+                        'NUM',
+                        'PIT',
+                        'HOUR',
+                        'SORT',
+                        'PRODUCTION',
+                        'PLAN_PRODUCTION',
+                        'ACH',
+                        'PRODUCTION_CUM',
+                        'PLAN_PRODUCTION_CUM',
+                        'ACH_CUM',
+                        'PRODUCTION_MD',
+                        'CREATED_TIME'
+                    )
                     ->where('PIT', 'ALL PIT')
                     ->where('CREATED_TIME', $latestCreatedTime)
                     ->get()
@@ -136,16 +150,33 @@ class OperationalStatusController extends Controller
                         return $row;
                     });
             }
-
-            $savedRemarks = $this->historicalHourlyRemarks($latestShiftHistories);
-            $hourly = $hourly->map(function ($row) use ($savedRemarks) {
-                $key = str_pad((int)$row->HOUR, 2, '0', STR_PAD_LEFT);
-                $row->SAVED_REMARK = $savedRemarks[$key] ?? '';
-                return $row;
-            });
         }
 
-        $hourly = $this->filterHourlyByShift($hourly, $shiftNo);
+        /*
+         * Keterangan per jam tidak lagi bergantung pada report jam tersebut
+         * harus pernah di-Draft. Setiap payload history menyimpan seluruh baris
+         * jam yang terlihat pada form, sehingga keterangan yang diisi untuk
+         * 22:00 / 23:00 ketika sedang berada di 01:00 tetap dapat dibaca lagi.
+         */
+        $savedRemarks = $this->historicalHourlyRemarks($latestShiftHistories);
+
+        /*
+         * DASHBOARD.PRODUCTION_PER_HOUR dapat berganti snapshot setelah lewat
+         * tengah malam. Akibatnya snapshot 01:00 kadang tidak membawa kembali
+         * baris 22:00 / 23:00 dari tanggal sebelumnya.
+         *
+         * Untuk tampilan Form, actual per jam dibangun ulang langsung dari
+         * FOCUS.PRD_RITATION berdasarkan OPR_REPORTTIME untuk seluruh shift
+         * sampai jam yang sedang dipilih. Dengan demikian user tidak perlu
+         * membuka dan Draft satu per satu setiap jam.
+         */
+        $hourly = $this->completeHourlyRowsForForm(
+            $hourly,
+            $reportDate,
+            $shiftNo,
+            $startHour,
+            $savedRemarks
+        );
 
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
         $hourly = $hourly->map(function ($row) use ($avgDistanceObByHour) {
@@ -931,20 +962,108 @@ class OperationalStatusController extends Controller
     {
         $remarks = [];
 
-        foreach ($histories as $history) {
+        $ordered = collect($histories)
+            ->sortBy(function ($history) {
+                $timestamp = $history->UPDATED_AT ?? $history->CREATED_AT ?? null;
+                return $timestamp ? Carbon::parse($timestamp)->timestamp : (int)$history->ID;
+            })
+            ->values();
+
+        foreach ($ordered as $history) {
             $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            $targetHour = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
 
-            $hourRow = collect($payload['hourly'] ?? [])->first(
-                fn($item) => str_pad((int)($item['hour'] ?? -1), 2, '0', STR_PAD_LEFT) === $targetHour
-            );
+            foreach (($payload['hourly'] ?? []) as $item) {
+                if (!isset($item['hour'])) {
+                    continue;
+                }
 
-            if ($hourRow && trim((string)($hourRow['remark'] ?? '')) !== '') {
-                $remarks[$targetHour] = trim((string)$hourRow['remark']);
+                $hourKey = str_pad((int)$item['hour'], 2, '0', STR_PAD_LEFT);
+
+                if (!$this->hourBelongsToShift((int)$hourKey, (int)$history->SHIFT_NO)) {
+                    continue;
+                }
+
+                /*
+                 * Blank juga disimpan. Jadi jika user sengaja menghapus
+                 * keterangan lama, nilai kosong dari penyimpanan terbaru
+                 * benar-benar menggantikan keterangan sebelumnya.
+                 */
+                $remarks[$hourKey] = trim((string)($item['remark'] ?? ''));
             }
         }
 
         return $remarks;
+    }
+
+    private function completeHourlyRowsForForm(
+        $dashboardRows,
+        string $reportDate,
+        int $shiftNo,
+        int $selectedHour,
+        array $savedRemarks = []
+    ) {
+        $dashboardByHour = collect($dashboardRows)
+            ->filter(fn($row) => $this->hourBelongsToShift((int)$row->HOUR, $shiftNo))
+            ->keyBy(fn($row) => str_pad((int)$row->HOUR, 2, '0', STR_PAD_LEFT));
+
+        $actualByHour = $this->actualTripTotalsByHour(
+            $reportDate,
+            $shiftNo,
+            collect()
+        );
+
+        $selectedPosition = $this->shiftPosition($selectedHour, $shiftNo);
+        $productionCum = 0.0;
+        $planCum = 0.0;
+        $result = collect();
+
+        foreach ($this->shiftHours($shiftNo) as $position => $hour) {
+            if ($position > $selectedPosition) {
+                break;
+            }
+
+            $hourKey = str_pad($hour, 2, '0', STR_PAD_LEFT);
+            $source = $dashboardByHour->get($hourKey);
+
+            $obTrips = (int)($actualByHour[$hourKey]['OB'] ?? 0);
+            $mudTrips = (int)($actualByHour[$hourKey]['MUD'] ?? 0);
+
+            $production = $obTrips * 42;
+            $productionMud = $mudTrips * 30;
+
+            $plan = $source && $source->PLAN_PRODUCTION !== null
+                ? (float)$source->PLAN_PRODUCTION
+                : null;
+
+            $productionCum += $production;
+
+            if ($plan !== null) {
+                $planCum += $plan;
+            }
+
+            $row = (object)[
+                'NUM' => $source->NUM ?? ($position + 1),
+                'PIT' => 'ALL PIT',
+                'HOUR' => $hourKey,
+                'SORT' => $source->SORT ?? $position,
+                'PRODUCTION' => $production,
+                'PLAN_PRODUCTION' => $plan,
+                'ACH' => $plan && $plan > 0 ? $production / $plan : 0,
+                'PRODUCTION_CUM' => $productionCum,
+                'PLAN_PRODUCTION_CUM' => $planCum,
+                'ACH_CUM' => $planCum > 0 ? $productionCum / $planCum : 0,
+                'PRODUCTION_MD' => $productionMud,
+                'AVG_DISTANCE_OB' => (float)($source->AVG_DISTANCE_OB ?? 0),
+                'CREATED_TIME' => $source->CREATED_TIME ?? null,
+                'SAVED_REMARK' => array_key_exists($hourKey, $savedRemarks)
+                    ? $savedRemarks[$hourKey]
+                    : (string)($source->SAVED_REMARK ?? ''),
+            ];
+
+            $result->push($row);
+        }
+
+        return $result->values();
     }
 
     private function filterHourlyByShift($hourly, int $shiftNo)
@@ -1224,27 +1343,35 @@ class OperationalStatusController extends Controller
         $actualTripTotals = $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows);
         $hourlyRows = [];
 
-        foreach ($rows as $history) {
-            $payload = json_decode($history->PAYLOAD_JSON, true) ?: [];
-            $hourKey = str_pad((int)substr($history->HOUR_START, 0, 2), 2, '0', STR_PAD_LEFT);
+        $selectedPositions = collect($rows)
+            ->map(fn($history) => $this->shiftPosition((int)substr($history->HOUR_START, 0, 2), $shiftNo))
+            ->sort()
+            ->values();
+
+        $firstPosition = $selectedPositions->isNotEmpty() ? (int)$selectedPositions->first() : 0;
+        $lastPosition = $selectedPositions->isNotEmpty() ? (int)$selectedPositions->last() : 0;
+        $reportRemarks = $this->historicalHourlyRemarks($rows);
+
+        foreach ($this->shiftHours($shiftNo) as $position => $hour) {
+            if ($position < $firstPosition || $position > $lastPosition) {
+                continue;
+            }
+
+            $hourKey = str_pad($hour, 2, '0', STR_PAD_LEFT);
             $obTrip = (int)($actualTripTotals[$hourKey]['OB'] ?? 0);
             $mudTrip = (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
-            $hourData = collect($payload['hourly'] ?? [])->first(
-                fn($item) => str_pad((int)($item['hour'] ?? -1), 2, '0', STR_PAD_LEFT) === $hourKey
-            ) ?? [];
+            $nextHour = ($hour + 1) % 24;
 
             $hourlyRows[] = [
-                'hour' => substr($history->HOUR_START, 0, 5).'-'.substr($history->HOUR_END, 0, 5),
+                'hour' => sprintf('%02d:00-%02d:00', $hour, $nextHour),
                 'ob_hd' => (int)($hdAktualByHour[$hourKey]['OB'] ?? 0),
                 'ob_trip' => $obTrip,
-                'ob_volume' => $obTrip * 42, // BCM = Ritasi OB aktual x 42
-                'avg_distance_ob' => isset($hourData['avg_distance_ob'])
-                    ? (float)$hourData['avg_distance_ob']
-                    : (float)($avgDistanceObByHour[$hourKey] ?? 0),
+                'ob_volume' => $obTrip * 42,
+                'avg_distance_ob' => (float)($avgDistanceObByHour[$hourKey] ?? 0),
                 'mud_hd' => (int)($hdAktualByHour[$hourKey]['MUD'] ?? 0),
                 'mud_trip' => $mudTrip,
-                'mud_volume' => $mudTrip * 30, // M3 = Ritasi MUD aktual x 30
-                'remark' => trim((string)($hourData['remark'] ?? '')),
+                'mud_volume' => $mudTrip * 30,
+                'remark' => trim((string)($reportRemarks[$hourKey] ?? '')),
             ];
         }
 
