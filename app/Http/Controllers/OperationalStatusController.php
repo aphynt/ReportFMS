@@ -323,7 +323,15 @@ class OperationalStatusController extends Controller
             $startDateTimeCarbon,
             $endDateTimeCarbon
         );
-        $details = $details->map(function ($row) use ($actualByExMaterial) {
+
+        // Productivity EXCA: gunakan sumber yang sama dengan halaman production.ex.
+        // PRODUCTION = Prty Actual, PLAN_PRODUCTION = Prty Plan.
+        $productivityByEx = $this->operationalStatusActualPerExForHour(
+            $reportDate,
+            $shiftNo,
+            $startHour
+        );
+        $details = $details->map(function ($row) use ($actualByExMaterial, $productivityByEx) {
             $loaderId = $this->normalizeReportLoaderId($row->VHC_ID ?? '');
             $stats = $actualByExMaterial[$loaderId] ?? [];
             $obTrip = (int)($stats['OB']['trips'] ?? 0);
@@ -343,9 +351,30 @@ class OperationalStatusController extends Controller
             if ($obTrip + $mudTrip > 0) {
                 $row->MATERIAL = $mudTrip > $obTrip ? 'MUD' : 'OB';
             }
-            $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
-                ? $mudTrip * 30
-                : $obTrip * 42;
+            $productivity = $productivityByEx[$loaderId][$row->MATERIAL] ?? null;
+
+            if ($productivity) {
+                // P.DTY Actual wajib sama dengan halaman Productivity EXCA.
+                $row->PDTY_ACTUAL = (int) round((float)($productivity['actual'] ?? 0));
+            } else {
+                // Fallback hanya jika SP belum mengembalikan EX tersebut.
+                $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
+                    ? $mudTrip * 30
+                    : $obTrip * 42;
+            }
+
+            // P.DTY Plan BUKAN dari stored procedure.
+            // Rumus:
+            // OB  = Trip Plan x 42
+            // MUD = Trip Plan x 30
+            $tripPlan = is_numeric($row->TRIP_PLAN ?? null)
+                ? (float)$row->TRIP_PLAN
+                : null;
+
+            $row->PDTY_PLAN = $tripPlan !== null
+                ? (int) round($tripPlan * ($row->MATERIAL === 'MUD' ? 30 : 42))
+                : null;
+
             return $row;
         });
 
@@ -404,8 +433,12 @@ class OperationalStatusController extends Controller
                 'DT_PLAN' => $prior['dt_plan'] ?? null,
                 'TRIP_ACTUAL' => $obTrips + $mudTrips,
                 'TRIP_PLAN' => $prior['trip_plan'] ?? null,
-                'PDTY_ACTUAL' => $material === 'MUD' ? $mudTrips * 30 : $obTrips * 42,
-                'PDTY_PLAN' => $prior['pdty_plan'] ?? null,
+                'PDTY_ACTUAL' => isset($productivityByEx[$loaderId][$material])
+                    ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
+                    : ($material === 'MUD' ? $mudTrips * 30 : $obTrips * 42),
+                'PDTY_PLAN' => is_numeric($prior['trip_plan'] ?? null)
+                    ? (int) round((float)$prior['trip_plan'] * ($material === 'MUD' ? 30 : 42))
+                    : null,
                 'PLAN_REFERENCE' => $prior['plan_reference'] ?? null,
                 'WD_STATUS' => $prior['wd_status'] ?? null,
                 'REMARK' => $prior['remark'] ?? '',
@@ -575,6 +608,12 @@ class OperationalStatusController extends Controller
         // Ambil satu hasil agregasi untuk per EX dan total jam sekaligus,
         // supaya saat snapshot dibuat, jumlah di bagian atas dan bawah identik.
         $snapshotByExMaterial = $this->actualTripsByExMaterialForWindow($slotStart, $slotEnd);
+
+        $productivitySnapshot = $this->operationalStatusActualPerExForHour(
+            $request->report_date,
+            $shiftNo,
+            $startHour
+        );
         $obTrips = 0;
         $mudTrips = 0;
         foreach ($snapshotByExMaterial as $materials) {
@@ -585,7 +624,7 @@ class OperationalStatusController extends Controller
         // Nilai readonly/hidden di Form bisa berasal dari browser yang masih lama.
         // Hitung ulang di server agar snapshot selalu sesuai query yang sama.
         $submittedDetails = collect($request->input('details', []))
-            ->map(function ($detail) use ($snapshotByExMaterial) {
+            ->map(function ($detail) use ($snapshotByExMaterial, $productivitySnapshot) {
                 $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
                 $materials = $snapshotByExMaterial[$loaderId] ?? [];
                 $ob = (int)($materials['OB']['trips'] ?? 0);
@@ -595,7 +634,25 @@ class OperationalStatusController extends Controller
                     : $this->inferMaterial($detail);
                 $detail['material'] = $material;
                 $detail['trip_actual'] = $ob + $mud;
-                $detail['pdty_actual'] = $material === 'MUD' ? $mud * 30 : $ob * 42;
+
+                $productivity = $productivitySnapshot[$loaderId][$material] ?? null;
+
+                if ($productivity) {
+                    // Actual mengikuti Productivity EXCA.
+                    $detail['pdty_actual'] = (int) round((float)($productivity['actual'] ?? 0));
+                } else {
+                    $detail['pdty_actual'] = $material === 'MUD' ? $mud * 30 : $ob * 42;
+                }
+
+                // Plan selalu dihitung dari Trip Plan.
+                $tripPlan = is_numeric($detail['trip_plan'] ?? null)
+                    ? (float)$detail['trip_plan']
+                    : null;
+
+                $detail['pdty_plan'] = $tripPlan !== null
+                    ? (int) round($tripPlan * ($material === 'MUD' ? 30 : 42))
+                    : null;
+
                 return $detail;
             })->values()->all();
 
@@ -612,6 +669,8 @@ class OperationalStatusController extends Controller
                 'loader_material_trips' => $snapshotByExMaterial,
                 'source' => 'focus.dbo.PRD_RITATION',
                 'classification' => 'LOD_MAT_ID',
+                'pdty_actual_source' => 'focus_reporting.dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR',
+                'pdty_plan_formula' => 'OB: trip_plan*42; MUD: trip_plan*30',
                 'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
             ],
         ]);
@@ -1184,6 +1243,52 @@ class OperationalStatusController extends Controller
      * OB: COUNT(*) × 42 BCM; MD: COUNT(*) × 30 M3.
      * __UNASSIGNED__ menampung loader kosong agar rekonsiliasi tetap utuh.
      */
+    /**
+     * P.DTY Actual per EX/material untuk satu jam.
+     * Sumber: dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR.
+     *
+     * Procedure menerima REPORT_DATE shift, SHIFT_NO, dan jam laporan.
+     * Shift malam 00-06 otomatis diarahkan ke tanggal kalender berikutnya
+     * di dalam procedure.
+     */
+    private function operationalStatusActualPerExForHour(
+        string $reportDate,
+        int $shiftNo,
+        int $hour
+    ): array {
+        $rows = DB::connection('focus_reporting')->select(
+            'SET NOCOUNT ON;
+             EXEC dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR
+             @REPORT_DATE = ?, @SHIFT_NO = ?, @HOUR = ?',
+            [$reportDate, $shiftNo, $hour]
+        );
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $loaderId = $this->normalizeReportLoaderId($row->LOD_LOADERID ?? '');
+            if ($loaderId === '') {
+                continue;
+            }
+
+            $material = strtoupper(trim((string)($row->MATERIAL ?? 'OB')));
+            $material = $material === 'MUD' ? 'MUD' : 'OB';
+
+            $result[$loaderId][$material] = [
+                'actual' => (float)($row->PRODUCTION_ACTUAL ?? 0),
+                'trips' => (int)($row->TRIP_ACTUAL ?? 0),
+                'hd' => (int)($row->HD_ACTUAL ?? 0),
+                'distance' => $row->AVG_DISTANCE_KM !== null
+                    ? (float)$row->AVG_DISTANCE_KM
+                    : null,
+                'pit' => $row->PIT ?? null,
+                'equ_group' => $row->EQU_GROUPID ?? null,
+            ];
+        }
+
+        return $result;
+    }
+
     private function actualTripsByExMaterialForWindow(Carbon $start, Carbon $end): array
     {
         $records = DB::connection('focus')
@@ -1395,6 +1500,12 @@ class OperationalStatusController extends Controller
         // Histori tetap menjadi sumber Area, Plan, W/D, Remark, Status Unit/Operator.
         $snapshotDetails = $this->actualTripsByExMaterialForWindow($lastSlotStart, $lastSlotEnd);
 
+        $productivityByEx = $this->operationalStatusActualPerExForHour(
+            $reportDate,
+            $shiftNo,
+            (int)$lastSlotStart->format('H')
+        );
+
         // Normalisasi kode EX di snapshot agar EX269 / ex269 / 269 tidak
         // dianggap sebagai tiga loader berbeda pada hasil laporan.
         $activeLoaders = [];
@@ -1519,8 +1630,12 @@ class OperationalStatusController extends Controller
                     'dt_plan' => ($detail['dt_plan'] ?? '') !== '' ? $detail['dt_plan'] : '-',
                     'trip_actual' => $trips,
                     'trip_plan' => ($detail['trip_plan'] ?? '') !== '' ? $detail['trip_plan'] : '-',
-                    'pdty_actual' => $trips * $factor,
-                    'pdty_plan' => ($detail['pdty_plan'] ?? '') !== '' ? $detail['pdty_plan'] : '-',
+                    'pdty_actual' => isset($productivityByEx[$loaderId][$material])
+                        ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
+                        : $trips * $factor,
+                    'pdty_plan' => is_numeric($detail['trip_plan'] ?? null)
+                        ? (int) round((float)$detail['trip_plan'] * $factor)
+                        : '-',
                     'wd' => $detail['wd_status'] ?? '-',
                     'remark' => trim((string)($detail['remark'] ?? ($mapped ? '' : 'Loader belum terdaftar di fleet/history'))),
                 ]);
