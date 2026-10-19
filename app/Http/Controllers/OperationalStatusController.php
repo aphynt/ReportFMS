@@ -277,9 +277,9 @@ class OperationalStatusController extends Controller
                 $row->TRIP_ACTUAL = (int)($rit->TRIP_ACTUAL ?? 0);
                 // Selanjutnya PDTY_ACTUAL disinkronkan dari hasil COUNT(*) per EX,
                 // LOD_MAT_ID dan interval jam, bukan dari CAPACITY / RIT_VOLUME.
-                $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
-                    ? $mudTripCount * 30
-                    : $obTripCount * 42;
+                // Nilai final P.DTY Actual akan diisi dari procedure hourly.
+                // Jangan hitung Actual dari Trip x 42/30.
+                $row->PDTY_ACTUAL = 0;
                 $row->PLAN_REFERENCE = $plan ? (float)$plan->pln_val : null;
                 $row->DT_PLAN = null;
                 $row->TRIP_PLAN = null;
@@ -353,15 +353,11 @@ class OperationalStatusController extends Controller
             }
             $productivity = $productivityByEx[$loaderId][$row->MATERIAL] ?? null;
 
-            if ($productivity) {
-                // P.DTY Actual wajib sama dengan halaman Productivity EXCA.
-                $row->PDTY_ACTUAL = (int) round((float)($productivity['actual'] ?? 0));
-            } else {
-                // Fallback hanya jika SP belum mengembalikan EX tersebut.
-                $row->PDTY_ACTUAL = $row->MATERIAL === 'MUD'
-                    ? $mudTrip * 30
-                    : $obTrip * 42;
-            }
+            // P.DTY Actual hanya berasal dari procedure hourly.
+            // Jika tidak ada hasil, nilainya 0; tidak ada fallback Trip x 42/30.
+            $row->PDTY_ACTUAL = $productivity
+                ? (int) round((float)($productivity['actual'] ?? 0))
+                : 0;
 
             // P.DTY Plan BUKAN dari stored procedure.
             // Rumus:
@@ -435,7 +431,7 @@ class OperationalStatusController extends Controller
                 'TRIP_PLAN' => $prior['trip_plan'] ?? null,
                 'PDTY_ACTUAL' => isset($productivityByEx[$loaderId][$material])
                     ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
-                    : ($material === 'MUD' ? $mudTrips * 30 : $obTrips * 42),
+                    : 0,
                 'PDTY_PLAN' => is_numeric($prior['trip_plan'] ?? null)
                     ? (int) round((float)$prior['trip_plan'] * ($material === 'MUD' ? 30 : 42))
                     : null,
@@ -637,12 +633,10 @@ class OperationalStatusController extends Controller
 
                 $productivity = $productivitySnapshot[$loaderId][$material] ?? null;
 
-                if ($productivity) {
-                    // Actual mengikuti Productivity EXCA.
-                    $detail['pdty_actual'] = (int) round((float)($productivity['actual'] ?? 0));
-                } else {
-                    $detail['pdty_actual'] = $material === 'MUD' ? $mud * 30 : $ob * 42;
-                }
+                // Actual hanya dari procedure hourly; tidak ada fallback Trip x 42/30.
+                $detail['pdty_actual'] = $productivity
+                    ? (int) round((float)($productivity['actual'] ?? 0))
+                    : 0;
 
                 // Plan selalu dihitung dari Trip Plan.
                 $tripPlan = is_numeric($detail['trip_plan'] ?? null)
@@ -656,6 +650,13 @@ class OperationalStatusController extends Controller
                 return $detail;
             })->values()->all();
 
+        $obActualVolume = collect($productivitySnapshot)->sum(
+            fn($materials) => (float)($materials['OB']['actual'] ?? 0)
+        );
+        $mudActualVolume = collect($productivitySnapshot)->sum(
+            fn($materials) => (float)($materials['MUD']['actual'] ?? 0)
+        );
+
         $request->merge([
             'details' => $submittedDetails,
             'units' => $units,
@@ -664,8 +665,8 @@ class OperationalStatusController extends Controller
             'ritation_snapshot' => [
                 'ob_trip' => $obTrips,
                 'mud_trip' => $mudTrips,
-                'ob_volume' => $obTrips * 42,
-                'mud_volume' => $mudTrips * 30,
+                'ob_volume' => (int) round($obActualVolume),
+                'mud_volume' => (int) round($mudActualVolume),
                 'loader_material_trips' => $snapshotByExMaterial,
                 'source' => 'focus.dbo.PRD_RITATION',
                 'classification' => 'LOD_MAT_ID',
@@ -1087,8 +1088,20 @@ class OperationalStatusController extends Controller
             $obTrips = (int)($actualByHour[$hourKey]['OB'] ?? 0);
             $mudTrips = (int)($actualByHour[$hourKey]['MUD'] ?? 0);
 
-            $production = $obTrips * 42;
-            $productionMud = $mudTrips * 30;
+            // Volume Produksi harus sama dengan total P.DTY Actual seluruh EX
+            // pada jam dan material yang sama.
+            $hourlyProductivity = $this->operationalStatusActualPerExForHour(
+                $reportDate,
+                $shiftNo,
+                $hour
+            );
+
+            $production = collect($hourlyProductivity)->sum(
+                fn($materials) => (float)($materials['OB']['actual'] ?? 0)
+            );
+            $productionMud = collect($hourlyProductivity)->sum(
+                fn($materials) => (float)($materials['MUD']['actual'] ?? 0)
+            );
 
             $plan = $source && $source->PLAN_PRODUCTION !== null
                 ? (float)$source->PLAN_PRODUCTION
@@ -1256,6 +1269,14 @@ class OperationalStatusController extends Controller
         int $shiftNo,
         int $hour
     ): array {
+        static $cache = [];
+
+        $cacheKey = $reportDate.'|'.$shiftNo.'|'.$hour;
+
+        if (array_key_exists($cacheKey, $cache)) {
+            return $cache[$cacheKey];
+        }
+
         $rows = DB::connection('focus_reporting')->select(
             'SET NOCOUNT ON;
              EXEC dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR
@@ -1285,6 +1306,8 @@ class OperationalStatusController extends Controller
                 'equ_group' => $row->EQU_GROUPID ?? null,
             ];
         }
+
+        $cache[$cacheKey] = $result;
 
         return $result;
     }
@@ -1467,15 +1490,29 @@ class OperationalStatusController extends Controller
             $mudTrip = (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
             $nextHour = ($hour + 1) % 24;
 
+            // Volume OB/MUD = jumlah P.DTY Actual seluruh EX pada jam tersebut.
+            $hourlyProductivity = $this->operationalStatusActualPerExForHour(
+                $reportDate,
+                $shiftNo,
+                $hour
+            );
+
+            $obVolume = collect($hourlyProductivity)->sum(
+                fn($materials) => (float)($materials['OB']['actual'] ?? 0)
+            );
+            $mudVolume = collect($hourlyProductivity)->sum(
+                fn($materials) => (float)($materials['MUD']['actual'] ?? 0)
+            );
+
             $hourlyRows[] = [
                 'hour' => sprintf('%02d:00-%02d:00', $hour, $nextHour),
                 'ob_hd' => (int)($hdAktualByHour[$hourKey]['OB'] ?? 0),
                 'ob_trip' => $obTrip,
-                'ob_volume' => $obTrip * 42,
+                'ob_volume' => (int) round($obVolume),
                 'avg_distance_ob' => (float)($avgDistanceObByHour[$hourKey] ?? 0),
                 'mud_hd' => (int)($hdAktualByHour[$hourKey]['MUD'] ?? 0),
                 'mud_trip' => $mudTrip,
-                'mud_volume' => $mudTrip * 30,
+                'mud_volume' => (int) round($mudVolume),
                 'remark' => trim((string)($reportRemarks[$hourKey] ?? '')),
             ];
         }
@@ -1632,7 +1669,7 @@ class OperationalStatusController extends Controller
                     'trip_plan' => ($detail['trip_plan'] ?? '') !== '' ? $detail['trip_plan'] : '-',
                     'pdty_actual' => isset($productivityByEx[$loaderId][$material])
                         ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
-                        : $trips * $factor,
+                        : 0,
                     'pdty_plan' => is_numeric($detail['trip_plan'] ?? null)
                         ? (int) round((float)$detail['trip_plan'] * $factor)
                         : '-',
