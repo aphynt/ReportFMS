@@ -196,6 +196,8 @@ class OperationalStatusController extends Controller
                     'MATERIAL' => $row['material'] ?? $this->inferMaterial($row),
                     'DISTANCE_ACTUAL' => (float)($row['distance_actual'] ?? 0),
                     'DT_ACTUAL' => (int)($row['dt_actual'] ?? 0),
+                    // Koreksi HD berlaku hanya untuk slot history ini.
+                    'DT_ACTUAL_ASSIGNMENT' => (int)($row['dt_actual_assignment'] ?? $row['dt_actual'] ?? 0),
                     'DT_PLAN' => $row['dt_plan'] ?? null,
                     'TRIP_ACTUAL' => (int)($row['trip_actual'] ?? 0),
                     'TRIP_PLAN' => $row['trip_plan'] ?? null,
@@ -273,7 +275,10 @@ class OperationalStatusController extends Controller
                     $row->MATERIAL = Str::contains($disposal, ['MUD', 'LUMPUR']) ? 'MUD' : 'OB';
                 }
                 $row->DISTANCE_ACTUAL = round($distance, 2);
-                $row->DT_ACTUAL = (int)($rit->HD_ACTUAL ?? $row->NUNIT ?? 0);
+                // Jam baru selalu mulai dari jumlah HD assignment, bukan
+                // koreksi manual yang disimpan pada jam sebelumnya.
+                $row->DT_ACTUAL = (int)($row->NUNIT ?? $rit->HD_ACTUAL ?? 0);
+                $row->DT_ACTUAL_ASSIGNMENT = $row->DT_ACTUAL;
                 $row->TRIP_ACTUAL = (int)($rit->TRIP_ACTUAL ?? 0);
                 // Selanjutnya PDTY_ACTUAL disinkronkan dari hasil COUNT(*) per EX,
                 // LOD_MAT_ID dan interval jam, bukan dari CAPACITY / RIT_VOLUME.
@@ -426,6 +431,7 @@ class OperationalStatusController extends Controller
                     : (float)($prior['distance_actual'] ?? 0)
                 ),
                 'DT_ACTUAL' => (int)(($materials['OB']['hd'] ?? 0) + ($materials['MUD']['hd'] ?? 0)),
+                'DT_ACTUAL_ASSIGNMENT' => (int)(($materials['OB']['hd'] ?? 0) + ($materials['MUD']['hd'] ?? 0)),
                 'DT_PLAN' => $prior['dt_plan'] ?? null,
                 'TRIP_ACTUAL' => $obTrips + $mudTrips,
                 'TRIP_PLAN' => $prior['trip_plan'] ?? null,
@@ -541,6 +547,9 @@ class OperationalStatusController extends Controller
             'hour_end' => 'required|date_format:H:i',
             'status' => 'nullable|in:draft',
             'base_history_id' => 'nullable|integer',
+            'details' => 'sometimes|array',
+            'details.*.dt_actual' => 'required|integer|min:0',
+            'details.*.dt_actual_assignment' => 'required|integer|min:0',
         ]);
 
         $shiftNo = (int)$request->shift_no;
@@ -630,6 +639,12 @@ class OperationalStatusController extends Controller
                     : $this->inferMaterial($detail);
                 $detail['material'] = $material;
                 $detail['trip_actual'] = $ob + $mud;
+                // Nilai Actual HD sengaja tidak dihitung ulang dari ritasi:
+                // CCR boleh mengoreksinya khusus untuk draft jam ini.
+                $detail['dt_actual'] = (int)$detail['dt_actual'];
+                $detail['dt_actual_assignment'] = (int)$detail['dt_actual_assignment'];
+                $detail['dt_actual_focus'] = (int)($materials['OB']['hd'] ?? 0)
+                    + (int)($materials['MUD']['hd'] ?? 0);
 
                 $productivity = $productivitySnapshot[$loaderId][$material] ?? null;
 
@@ -1461,9 +1476,27 @@ class OperationalStatusController extends Controller
         $shiftNo = (int)$first->SHIFT_NO;
         $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
-        // HD per jam dihitung ulang dari FOCUS, terlepas dari nilai DT di history.
-        // Riwayat Ritasi/Volume tetap mengikuti kebijakan snapshot V8.
+        // HD dasar tetap dihitung dari FOCUS. Jika DT Actual diedit dari
+        // assignment, terapkan selisihnya terhadap HD FOCUS saat draft disimpan.
         $hdAktualByHour = $this->actualHdTotalsByHour($reportDate, $shiftNo);
+        $hdAdjustmentsByHour = [];
+        foreach ($rows as $historyRow) {
+            $hourKey = substr((string)$historyRow->HOUR_START, 0, 2);
+            $payload = json_decode($historyRow->PAYLOAD_JSON, true) ?: [];
+            $adjustments = ['OB' => 0, 'MUD' => 0];
+            foreach ($payload['details'] ?? [] as $detail) {
+                if (!isset($detail['dt_actual_assignment'], $detail['dt_actual_focus'])
+                    || !is_numeric($detail['dt_actual_assignment'])
+                    || !is_numeric($detail['dt_actual_focus'])
+                    || !is_numeric($detail['dt_actual'] ?? null)
+                    || (int)$detail['dt_actual'] === (int)$detail['dt_actual_assignment']) {
+                    continue;
+                }
+                $material = $this->inferMaterial($detail);
+                $adjustments[$material] += (int)$detail['dt_actual'] - (int)$detail['dt_actual_focus'];
+            }
+            $hdAdjustmentsByHour[$hourKey] = $adjustments;
+        }
         // V12: Preview WA/PNG selalu mengambil ritasi aktual terkini dari FOCUS,
         // termasuk transaksi yang masuk setelah history disimpan. History resmi
         // di database TIDAK diubah oleh preview; snapshot diperbarui saat CCR
@@ -1506,11 +1539,13 @@ class OperationalStatusController extends Controller
 
             $hourlyRows[] = [
                 'hour' => sprintf('%02d:00-%02d:00', $hour, $nextHour),
-                'ob_hd' => (int)($hdAktualByHour[$hourKey]['OB'] ?? 0),
+                'ob_hd' => max(0, (int)($hdAktualByHour[$hourKey]['OB'] ?? 0)
+                    + (int)($hdAdjustmentsByHour[$hourKey]['OB'] ?? 0)),
                 'ob_trip' => $obTrip,
                 'ob_volume' => (int) round($obVolume),
                 'avg_distance_ob' => (float)($avgDistanceObByHour[$hourKey] ?? 0),
-                'mud_hd' => (int)($hdAktualByHour[$hourKey]['MUD'] ?? 0),
+                'mud_hd' => max(0, (int)($hdAktualByHour[$hourKey]['MUD'] ?? 0)
+                    + (int)($hdAdjustmentsByHour[$hourKey]['MUD'] ?? 0)),
                 'mud_trip' => $mudTrip,
                 'mud_volume' => (int) round($mudVolume),
                 'remark' => trim((string)($reportRemarks[$hourKey] ?? '')),
@@ -1518,6 +1553,16 @@ class OperationalStatusController extends Controller
         }
 
         $lastPayload = json_decode($last->PAYLOAD_JSON, true) ?: [];
+        // Nilai HD yang disimpan untuk jam terakhir saja. Jangan memakai
+        // metadata history sebelumnya karena koreksi tidak boleh terbawa jam.
+        $savedActualHdForLastHour = [];
+        foreach ($lastPayload['details'] ?? [] as $detail) {
+            $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
+            if ($loaderId !== '' && isset($detail['dt_actual_assignment'])
+                && is_numeric($detail['dt_actual'] ?? null)) {
+                $savedActualHdForLastHour[$loaderId] = max(0, (int)$detail['dt_actual']);
+            }
+        }
 
         // Bagian Produksi Perjam hanya menampilkan EX yang mempunyai ritasi/volume
         // pada interval laporan terakhir. Preview mengambil transaksi LIVE FOCUS,
@@ -1636,6 +1681,26 @@ class OperationalStatusController extends Controller
             if (empty($materials)) {
                 continue;
             }
+            $hdByMaterial = [
+                'OB' => (int)($materials['OB']['hd'] ?? 0),
+                'MUD' => (int)($materials['MUD']['hd'] ?? 0),
+            ];
+            if (array_key_exists($loaderId, $savedActualHdForLastHour)) {
+                // Form memiliki satu angka HD per EX. Jika EX bekerja di dua
+                // material, bagi secara proporsional agar totalnya tetap sama.
+                $obWeight = $hdByMaterial['OB'] + $hdByMaterial['MUD'] > 0
+                    ? $hdByMaterial['OB']
+                    : (int)($materials['OB']['trips'] ?? 0);
+                $mudWeight = $hdByMaterial['OB'] + $hdByMaterial['MUD'] > 0
+                    ? $hdByMaterial['MUD']
+                    : (int)($materials['MUD']['trips'] ?? 0);
+                $totalWeight = $obWeight + $mudWeight;
+                $savedHd = $savedActualHdForLastHour[$loaderId];
+                $hdByMaterial['OB'] = $totalWeight > 0
+                    ? (int)round($savedHd * $obWeight / $totalWeight)
+                    : $savedHd;
+                $hdByMaterial['MUD'] = $savedHd - $hdByMaterial['OB'];
+            }
             $detail = $metadataByLoader[$loaderId] ?? [];
             $mapped = !empty($detail);
             $area = preg_replace('/^PIT\s+/i', '', (string)($detail['pit'] ?? 'BELUM TERPETAKAN'));
@@ -1663,7 +1728,7 @@ class OperationalStatusController extends Controller
                         ? '-'
                         : preg_replace('/^EX/i', '', $loaderId),
                     'distance' => $actualDistanceKm,
-                    'dt_actual' => (int)($materials[$material]['hd'] ?? 0),
+                    'dt_actual' => $hdByMaterial[$material],
                     'dt_plan' => ($detail['dt_plan'] ?? '') !== '' ? $detail['dt_plan'] : '-',
                     'trip_actual' => $trips,
                     'trip_plan' => ($detail['trip_plan'] ?? '') !== '' ? $detail['trip_plan'] : '-',

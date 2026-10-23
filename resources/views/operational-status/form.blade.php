@@ -192,7 +192,7 @@
             <div class="ops-panel-head">
                 <div><span>FLEET MATCHING</span>
                     <h3>Produksi Per Excavator</h3>
-                    <p>Angka aktual dari FMS. Kolom berwarna kuning muda dapat diisi manual.</p>
+                    <p>DT Actual mengikuti assignment dan dapat dikoreksi untuk draft jam ini. Pada jam berikutnya kembali ke assignment.</p>
                 </div>
                 <div class="ops-legend"><span><i class="dot auto"></i>FMS</span><span><i class="dot manual"></i>User
                         Input</span></div>
@@ -212,7 +212,7 @@
                             <th rowspan="2">Keterangan</th>
                         </tr>
                         <tr>
-                            <th class="center">Actual</th>
+                            <th class="center manual-head" title="Bisa dikoreksi untuk draft jam ini. Jam berikutnya kembali ke assignment.">Actual</th>
                             <th class="center manual-head">Plan</th>
                             <th class="center">Actual</th>
                             <th class="center manual-head">Plan</th>
@@ -239,7 +239,14 @@
                             </td>
                             <td><div class="unit-cell"><span>EX</span><strong>{{ str_replace('EX','',$row->VHC_ID) }}</strong></div><input type="hidden" name="details[{{ $i }}][vhc_id]" value="{{ $row->VHC_ID }}"><input type="hidden" name="details[{{ $i }}][material]" value="{{ $row->MATERIAL ?? 'OB' }}"></td>
                             <td class="center"><span class="readonly-value">{{ number_format($row->DISTANCE_ACTUAL??0,2) }} <small>km</small></span><input type="hidden" name="details[{{ $i }}][distance_actual]" value="{{ $row->DISTANCE_ACTUAL??0 }}"></td>
-                            <td class="center"><span class="readonly-value">{{ $row->DT_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][dt_actual]" value="{{ $row->DT_ACTUAL??0 }}"></td>
+                            <td class="center">
+                                <input type="number" class="ops-input manual center" name="details[{{ $i }}][dt_actual]"
+                                    value="{{ old('details.'.$i.'.dt_actual', $row->DT_ACTUAL ?? 0) }}" min="0" step="1" required
+                                    title="Actual HD dapat dikoreksi pada draft jam ini; jam baru kembali ke assignment"
+                                    style="min-width:68px;width:78px">
+                                <input type="hidden" name="details[{{ $i }}][dt_actual_assignment]"
+                                    value="{{ $row->DT_ACTUAL_ASSIGNMENT ?? $row->DT_ACTUAL ?? 0 }}">
+                            </td>
                             <td><input type="number" class="ops-input manual center required-manual" name="details[{{ $i }}][dt_plan]" value="{{ $row->DT_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="readonly-value">{{ $row->TRIP_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][trip_actual]" value="{{ $row->TRIP_ACTUAL??0 }}"></td>
                             <td><input type="number" class="ops-input manual center required-manual trip-plan" data-row="{{ $i }}" name="details[{{ $i }}][trip_plan]" value="{{ $row->TRIP_PLAN??'' }}" placeholder="-"></td>
@@ -1385,10 +1392,31 @@ $(function(){
     function getShiftHours(shift){return String(shift)==='6'?[7,8,9,10,11,12,13,14,15,16,17,18]:[19,20,21,22,23,0,1,2,3,4,5,6]}
     function updateHourEnd(){const start=$('#hour_start').val();if(!start)return;const h=parseInt(start.substring(0,2),10);const end=padHour((h+1)%24);$('#hour_end').val(end);$('#hour_end_display').val(end)}
     function rebuildHourOptions(){const shift=$('#shift_no').val(),hours=getShiftHours(shift),current=$('#hour_start').val();let html='';hours.forEach(h=>{const start=padHour(h),end=padHour((h+1)%24);html+=`<option value="${start}">${start} - ${end}</option>`});$('#hour_start').html(html);if(hours.map(padHour).includes(current))$('#hour_start').val(current);else $('#hour_start').val(padHour(hours[0]));updateHourEnd()}
-    $('#shift_no').on('change',rebuildHourOptions);
-    $('#hour_start').on('change',updateHourEnd);
+    const loadedFilter={date:$('#report_date').val(),shift:$('#shift_no').val(),hour:$('#hour_start').val()};
+    let formDirty=false;
+    $('#opsForm').on('input change','input,select,textarea',function(){
+        if(!$(this).is('#report_date,#shift_no,#hour_start,#hour_end,#hour_end_display'))formDirty=true;
+    });
+    function loadSelectedHour(){
+        if(formDirty&&!confirm('Perubahan draft yang belum disimpan akan hilang. Tampilkan jam yang dipilih?')){
+            $('#report_date').val(loadedFilter.date);
+            $('#shift_no').val(loadedFilter.shift);
+            rebuildHourOptions();
+            $('#hour_start').val(loadedFilter.hour);
+            updateHourEnd();
+            return;
+        }
+        const u=new URL("{{ route('operational-status.index') }}",window.location.origin);
+        u.searchParams.set('date',$('#report_date').val());
+        u.searchParams.set('shift',$('#shift_no').val());
+        u.searchParams.set('hour_start',$('#hour_start').val());
+        window.location.href=u.toString();
+    }
+    $('#shift_no').on('change',function(){rebuildHourOptions();loadSelectedHour()});
+    $('#hour_start').on('change',function(){updateHourEnd();loadSelectedHour()});
+    $('#report_date').on('change',loadSelectedHour);
     updateHourEnd();
-    $('#btnReload').on('click',function(){const u=new URL("{{ route('operational-status.index') }}",window.location.origin);u.searchParams.set('date',$('#report_date').val());u.searchParams.set('shift',$('#shift_no').val());u.searchParams.set('hour_start',$('#hour_start').val());u.searchParams.set('hour_end',$('#hour_end').val());window.location.href=u.toString()});
+    $('#btnReload').on('click',loadSelectedHour);
     $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
     $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
     function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
