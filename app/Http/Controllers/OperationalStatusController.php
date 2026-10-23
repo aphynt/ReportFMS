@@ -531,10 +531,15 @@ class OperationalStatusController extends Controller
             'production_mud' => (float)($currentProduction->PRODUCTION_MD ?? 0),
         ];
 
+        // Penanda izin edit Actual HD berasal dari kolom HD_DRAFT_EDITABLE.
+        $canEditActualHd = $history
+            && strtolower((string)$history->STATUS) === 'draft'
+            && (int)($history->HD_DRAFT_EDITABLE ?? 0) === 1;
+
         return view('operational-status.form', compact(
             'reportDate', 'shiftNo', 'hourStart', 'hourEnd', 'shiftHours', 'hourly', 'details',
             'unitStatus', 'operatorStatus', 'notes', 'issues', 'latestCreatedTime',
-            'currentProduction', 'summary', 'history', 'continuedFrom'
+            'currentProduction', 'summary', 'history', 'continuedFrom', 'canEditActualHd'
         ));
     }
 
@@ -546,7 +551,8 @@ class OperationalStatusController extends Controller
             'hour_start' => 'required|date_format:H:i',
             'hour_end' => 'required|date_format:H:i',
             'status' => 'nullable|in:draft',
-            'base_history_id' => 'nullable|integer',
+            'history_id' => 'nullable|integer',
+            'HD_DRAFT_EDITABLE' => 'nullable|boolean',
             'details' => 'sometimes|array',
             'details.*.dt_actual' => 'required|integer|min:0',
             'details.*.dt_actual_assignment' => 'required|integer|min:0',
@@ -567,6 +573,42 @@ class OperationalStatusController extends Controller
             return back()->withInput()->withErrors([
                 'hour_end' => 'Jam selesai harus satu jam setelah jam mulai.',
             ]);
+        }
+
+        $editingHistory = $request->filled('history_id')
+            ? OperationalStatusHistory::where('IS_ACTIVE', 1)->findOrFail((string)$request->history_id)
+            : null;
+        $previousPayload = $editingHistory
+            ? (json_decode($editingHistory->PAYLOAD_JSON, true) ?: [])
+            : [];
+        // Jangan percaya flag dari hidden input. Gunakan kolom database
+        // HD_DRAFT_EDITABLE dan STATUS yang tersimpan sebagai sumber izin edit.
+        $canEditActualHd = $editingHistory
+            && strtolower((string)$editingHistory->STATUS) === 'draft'
+            && (int)($editingHistory->HD_DRAFT_EDITABLE ?? 0) === 1;
+        $previousDetails = collect($previousPayload['details'] ?? [])
+            ->mapWithKeys(function ($detail) {
+                $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
+                return $loaderId !== '' ? [$loaderId => $detail] : [];
+            });
+
+        // Draft pertama harus memakai assignment server, bukan angka Actual HD
+        // yang dimanipulasi dari browser sebelum status Draft tersedia.
+        $assignmentHd = [];
+        if (!$editingHistory) {
+            $fleetAssignments = DB::connection('focus_reporting')
+                ->table('REALTIME.MATCHING_FLEET')
+                ->whereNotNull('VHC_ID')
+                ->select('VHC_ID', 'NUNIT')
+                ->get();
+            foreach ($fleetAssignments as $fleetRow) {
+                $loaderId = $this->normalizeReportLoaderId($fleetRow->VHC_ID);
+                if ($loaderId !== '') {
+                    $assignmentHd[$loaderId] = $fleetRow->NUNIT !== null
+                        ? (int)$fleetRow->NUNIT
+                        : null;
+                }
+            }
         }
 
         $units = collect($request->input('units', []))
@@ -629,22 +671,46 @@ class OperationalStatusController extends Controller
         // Nilai readonly/hidden di Form bisa berasal dari browser yang masih lama.
         // Hitung ulang di server agar snapshot selalu sesuai query yang sama.
         $submittedDetails = collect($request->input('details', []))
-            ->map(function ($detail) use ($snapshotByExMaterial, $productivitySnapshot) {
+            ->map(function ($detail) use (
+                $snapshotByExMaterial, $productivitySnapshot, $editingHistory,
+                $canEditActualHd, $previousDetails, $assignmentHd
+            ) {
                 $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
                 $materials = $snapshotByExMaterial[$loaderId] ?? [];
                 $ob = (int)($materials['OB']['trips'] ?? 0);
                 $mud = (int)($materials['MUD']['trips'] ?? 0);
+                $focusHd = (int)($materials['OB']['hd'] ?? 0)
+                    + (int)($materials['MUD']['hd'] ?? 0);
+                $defaultHd = $assignmentHd[$loaderId] ?? $focusHd;
+                $previous = $previousDetails->get($loaderId);
                 $material = $ob + $mud > 0
                     ? ($mud > $ob ? 'MUD' : 'OB')
                     : $this->inferMaterial($detail);
                 $detail['material'] = $material;
                 $detail['trip_actual'] = $ob + $mud;
-                // Nilai Actual HD sengaja tidak dihitung ulang dari ritasi:
-                // CCR boleh mengoreksinya khusus untuk draft jam ini.
-                $detail['dt_actual'] = (int)$detail['dt_actual'];
-                $detail['dt_actual_assignment'] = (int)$detail['dt_actual_assignment'];
-                $detail['dt_actual_focus'] = (int)($materials['OB']['hd'] ?? 0)
-                    + (int)($materials['MUD']['hd'] ?? 0);
+                if (!$editingHistory) {
+                    // Sebelum Draft pertama: selalu nilai assignment asli.
+                    $detail['dt_actual'] = $defaultHd;
+                    $detail['dt_actual_assignment'] = $defaultHd;
+                    $detail['dt_actual_focus'] = $focusHd;
+                } elseif (!$canEditActualHd) {
+                    // Status sent: angka HD tidak boleh diubah, termasuk via POST.
+                    $lockedHd = (int)($previous['dt_actual'] ?? $defaultHd);
+                    if ((int)$detail['dt_actual'] !== $lockedHd) {
+                        throw ValidationException::withMessages([
+                            'details' => 'Actual HD hanya dapat diubah ketika status laporan Draft.',
+                        ]);
+                    }
+                    $detail['dt_actual'] = $lockedHd;
+                    $detail['dt_actual_assignment'] = (int)($previous['dt_actual_assignment'] ?? $lockedHd);
+                    $detail['dt_actual_focus'] = (int)($previous['dt_actual_focus'] ?? $focusHd);
+                } else {
+                    // Hanya edit history berstatus Draft yang menerima koreksi.
+                    $detail['dt_actual'] = (int)$detail['dt_actual'];
+                    $detail['dt_actual_assignment'] = (int)($previous['dt_actual_assignment']
+                        ?? $previous['dt_actual'] ?? $defaultHd);
+                    $detail['dt_actual_focus'] = $focusHd;
+                }
 
                 $productivity = $productivitySnapshot[$loaderId][$material] ?? null;
 
@@ -693,9 +759,9 @@ class OperationalStatusController extends Controller
 
         $model = new OperationalStatusHistory();
 
-        $history = $model->getConnection()->transaction(function () use ($request) {
-            $editingId = $request->filled('base_history_id')
-                ? (int)$request->base_history_id
+        $history = $model->getConnection()->transaction(function () use ($request, $editingHistory) {
+            $editingId = $request->filled('history_id')
+                ? (string)$request->history_id
                 : null;
 
             $slotQuery = OperationalStatusHistory::query()
@@ -719,7 +785,14 @@ class OperationalStatusController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($editingId);
 
-                if ($existingSlot && (int)$existingSlot->ID !== (int)$history->ID) {
+                if (strtolower((string)$history->STATUS)
+                    !== strtolower((string)$editingHistory->STATUS)) {
+                    throw ValidationException::withMessages([
+                        'history_id' => 'Status laporan berubah. Muat ulang form sebelum menyimpan.',
+                    ]);
+                }
+
+                if ($existingSlot && (string)$existingSlot->ID !== (string)$history->ID) {
                     throw ValidationException::withMessages([
                         'hour_start' => 'Data aktif pada tanggal dan jam tersebut sudah ada. Silakan edit data yang sudah ada.',
                     ]);
@@ -729,11 +802,12 @@ class OperationalStatusController extends Controller
                 $history->SHIFT_NO = (int)$request->shift_no;
                 $history->HOUR_START = $request->hour_start;
                 $history->HOUR_END = $request->hour_end;
-                $history->STATUS = 'draft';
+                // Jangan membuka kembali status sent ketika field lain disimpan.
                 $history->PAYLOAD_JSON = json_encode(
-                    $request->except('_token'),
+                    $request->except('_token', 'HD_DRAFT_EDITABLE', 'hd_draft_editable'),
                     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                 );
+                $history->HD_DRAFT_EDITABLE = strtolower((string)$history->STATUS) === 'draft' ? 1 : 0;
                 $history->IS_ACTIVE = 1;
                 $history->save();
 
@@ -760,7 +834,7 @@ class OperationalStatusController extends Controller
                 ->lockForUpdate()
                 ->max('VERSION');
 
-            return OperationalStatusHistory::create([
+            $created = OperationalStatusHistory::create([
                 'REPORT_DATE' => $request->report_date,
                 'SHIFT_NO' => (int)$request->shift_no,
                 'HOUR_START' => $request->hour_start,
@@ -768,13 +842,18 @@ class OperationalStatusController extends Controller
                 'VERSION' => ((int)$latestVersion) + 1,
                 'STATUS' => 'draft',
                 'PAYLOAD_JSON' => json_encode(
-                    $request->except('_token'),
+                    $request->except('_token', 'HD_DRAFT_EDITABLE', 'hd_draft_editable'),
                     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
                 ),
-                'BASE_HISTORY_ID' => null,
                 'CREATED_BY' => optional(Auth::user())->name ?? optional(Auth::user())->nik ?? null,
                 'IS_ACTIVE' => 1,
             ]);
+            // Set langsung agar tetap tersimpan meskipun kolom ini belum
+            // didaftarkan pada $fillable model.
+            $created->HD_DRAFT_EDITABLE = 1;
+            $created->save();
+
+            return $created;
         });
 
         return redirect()
@@ -823,7 +902,8 @@ class OperationalStatusController extends Controller
             ->values();
 
         $rows = $this->sortHistories($rows, $shiftNo)->map(fn($row) => [
-            'id' => $row->ID,
+            // String menjaga presisi SQL Server BIGINT di sisi JavaScript.
+            'id' => (string)$row->ID,
             'hour_start' => substr($row->HOUR_START, 0, 5),
             'hour_end' => substr($row->HOUR_END, 0, 5),
             'version' => $row->VERSION,
@@ -874,7 +954,20 @@ class OperationalStatusController extends Controller
         $request->validate([
             'photo' => 'required|file|mimes:png,jpg,jpeg,webp|max:15360',
             'caption' => 'nullable|string|max:3000',
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|integer|distinct',
         ]);
+
+        $histories = OperationalStatusHistory::whereIn('ID', $request->ids)
+            ->where('IS_ACTIVE', 1)
+            ->get();
+        if ($histories->count() !== count($request->ids)) {
+            return response()->json(['message' => 'History laporan yang dipilih tidak lengkap.'], 422);
+        }
+        if ($histories->pluck('REPORT_DATE')->map(fn($d) => Carbon::parse($d)->format('Y-m-d'))->unique()->count() > 1
+            || $histories->pluck('SHIFT_NO')->unique()->count() > 1) {
+            return response()->json(['message' => 'History harus dari tanggal dan shift yang sama.'], 422);
+        }
 
         $apiUrl = config('services.whatsapp.api_url');
         $apiKey = config('services.whatsapp.api_key');
@@ -912,6 +1005,32 @@ class OperationalStatusController extends Controller
                     'upstream_status' => $response->status(),
                     'upstream_response' => $response->json() ?: $response->body(),
                 ], 502);
+            }
+
+            try {
+                // Kunci Actual HD hanya setelah WhatsApp mengonfirmasi sukses.
+                (new OperationalStatusHistory())->getConnection()->transaction(function () use ($histories) {
+                    $sentHistories = OperationalStatusHistory::whereIn('ID', $histories->pluck('ID'))
+                        ->where('IS_ACTIVE', 1)
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($sentHistories as $sentHistory) {
+                        $sentHistory->HD_DRAFT_EDITABLE = 0;
+                        if (strtolower((string)$sentHistory->STATUS) === 'draft') {
+                            $sentHistory->STATUS = 'sent';
+                        }
+                        $sentHistory->save();
+                    }
+                });
+            } catch (\Throwable $e) {
+                report($e);
+                // Jangan mengaku pengiriman gagal karena WA sudah menerima foto.
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Gambar terkirim ke WhatsApp, tetapi penguncian status gagal. Hubungi admin.',
+                    'status_updated' => false,
+                ]);
             }
 
             return response()->json([

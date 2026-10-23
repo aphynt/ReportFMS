@@ -55,7 +55,8 @@
 
     <form method="POST" action="{{ route('operational-status.store') }}" id="opsForm">
         @csrf
-        @if(!empty($history)) <input type="hidden" name="base_history_id" value="{{ $history->ID }}"> @endif
+        @if(!empty($history)) <input type="hidden" name="history_id" value="{{ $history->ID }}"> @endif
+        <input type="hidden" name="HD_DRAFT_EDITABLE" value="{{ $canEditActualHd ? 1 : 0 }}">
 
         <div class="ops-filter">
             <div class="ops-field">
@@ -192,7 +193,15 @@
             <div class="ops-panel-head">
                 <div><span>FLEET MATCHING</span>
                     <h3>Produksi Per Excavator</h3>
-                    <p>DT Actual mengikuti assignment dan dapat dikoreksi untuk draft jam ini. Pada jam berikutnya kembali ke assignment.</p>
+                    <p>
+                        @if($canEditActualHd)
+                            DT Actual dapat dikoreksi selama status Draft. Jam berikutnya kembali mengikuti assignment.
+                        @elseif(empty($history))
+                            DT Actual mengikuti assignment. Simpan sebagai Draft terlebih dahulu untuk mengeditnya.
+                        @else
+                            DT Actual terkunci karena laporan sudah dikirim. Jam baru tetap mengikuti assignment.
+                        @endif
+                    </p>
                 </div>
                 <div class="ops-legend"><span><i class="dot auto"></i>FMS</span><span><i class="dot manual"></i>User
                         Input</span></div>
@@ -212,7 +221,7 @@
                             <th rowspan="2">Keterangan</th>
                         </tr>
                         <tr>
-                            <th class="center manual-head" title="Bisa dikoreksi untuk draft jam ini. Jam berikutnya kembali ke assignment.">Actual</th>
+                            <th class="center {{ $canEditActualHd ? 'manual-head' : '' }}" title="Actual HD hanya dapat diedit saat status Draft">Actual</th>
                             <th class="center manual-head">Plan</th>
                             <th class="center">Actual</th>
                             <th class="center manual-head">Plan</th>
@@ -240,9 +249,10 @@
                             <td><div class="unit-cell"><span>EX</span><strong>{{ str_replace('EX','',$row->VHC_ID) }}</strong></div><input type="hidden" name="details[{{ $i }}][vhc_id]" value="{{ $row->VHC_ID }}"><input type="hidden" name="details[{{ $i }}][material]" value="{{ $row->MATERIAL ?? 'OB' }}"></td>
                             <td class="center"><span class="readonly-value">{{ number_format($row->DISTANCE_ACTUAL??0,2) }} <small>km</small></span><input type="hidden" name="details[{{ $i }}][distance_actual]" value="{{ $row->DISTANCE_ACTUAL??0 }}"></td>
                             <td class="center">
-                                <input type="number" class="ops-input manual center" name="details[{{ $i }}][dt_actual]"
+                                <input type="number" class="ops-input center {{ $canEditActualHd ? 'manual' : '' }}" name="details[{{ $i }}][dt_actual]"
                                     value="{{ old('details.'.$i.'.dt_actual', $row->DT_ACTUAL ?? 0) }}" min="0" step="1" required
-                                    title="Actual HD dapat dikoreksi pada draft jam ini; jam baru kembali ke assignment"
+                                    @if(!$canEditActualHd) readonly @endif
+                                    title="{{ $canEditActualHd ? 'Edit Actual HD untuk draft jam ini' : 'Actual HD dikunci di luar status Draft' }}"
                                     style="min-width:68px;width:78px">
                                 <input type="hidden" name="details[{{ $i }}][dt_actual_assignment]"
                                     value="{{ $row->DT_ACTUAL_ASSIGNMENT ?? $row->DT_ACTUAL ?? 0 }}">
@@ -1382,7 +1392,7 @@ body { background: #f2f4f6; }
     $('.modal-backdrop').remove();
 });
 $(function(){
-    let waBlob=null,waFilename='operational-status.png',waCaption='Operational Status';
+    let waBlob=null,waFilename='operational-status.png',waCaption='Operational Status',waRenderedIds=[];
 
     $('#btnDeleteHistory').on('click',function(){
         if(!confirm('Hapus data Operational Status ini? Data tidak dihapus permanen dan hanya akan dinonaktifkan.')) return;
@@ -1439,8 +1449,8 @@ $(function(){
     $(document).on('input change','.required-manual',updateCompletion);updateCompletion();
     $('#btnWhatsapp').on('click',function(){$('#modalWhatsapp').modal('show');loadWhatsappHistory()});
     function loadWhatsappHistory(){waBlob=null;$('#waHistoryList').html('<div class="wa-loading"><i class="fas fa-spinner fa-spin"></i> Memuat historical...</div>');$('#waPreviewStage').html('<div class="wa-empty">Memuat data...</div>');$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',true);$.get("{{ route('operational-status.whatsapp-histories') }}",{date:$('#report_date').val(),shift:$('#shift_no').val()}).done(function(res){const rows=res.data||[];if(!rows.length){$('#waHistoryList').html('<div class="wa-empty">Belum ada historical pada tanggal dan shift ini.</div>');$('#waPreviewStage').html('<div class="wa-empty">Simpan report per jam terlebih dahulu.</div>');$('#waSelectedInfo').text('0 data dipilih');return}let h='';rows.forEach(r=>h+=`<div class="wa-history-row"><input type="checkbox" class="wa-history-check" value="${r.id}" checked><div class="wa-history-main"><strong>${r.hour_start} - ${r.hour_end}</strong><small>V${r.version} · ${r.status||'-'}${r.created_by?' · '+r.created_by:''}</small></div><a href="${r.edit_url}" class="wa-edit" title="Edit data per jam"><i class="fas fa-pen"></i></a></div>`);$('#waHistoryList').html(h);$('#waSelectAll').prop('checked',true);buildImagePreview()}).fail(showAjaxError)}
-    function selectedIds(){return $('.wa-history-check:checked').map(function(){return parseInt($(this).val())}).get()}
-    async function buildImagePreview(){const ids=selectedIds();$('#waSelectedInfo').text(ids.length+' data dipilih');$('#waSelectAll').prop('checked',$('.wa-history-check').length>0&&ids.length===$('.wa-history-check').length);waBlob=null;$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',true);if(!ids.length){$('#waPreviewStage').html('<div class="wa-empty">Pilih minimal satu historical.</div>');return}if(typeof html2canvas==='undefined'){showMessage('html2canvas belum termuat. Pastikan koneksi internet atau simpan library html2canvas secara lokal.');return}$('#waPreviewStage').html('<div class="wa-generating"><i class="fas fa-spinner fa-spin"></i>Membuat gambar report...</div>');$.ajax({url:"{{ route('operational-status.whatsapp-report-preview') }}",type:'POST',data:{_token:$('input[name="_token"]').first().val(),ids:ids,include_summary:$('#waIncludeSummary').is(':checked')?1:0}}).done(async function(res){try{$('#waRenderTarget').html(res.html||'');waFilename=res.filename||waFilename;waCaption=res.caption||waCaption;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await new Promise(r=>setTimeout(r,60));const el=document.getElementById('ops-report-image');if(!el)throw new Error('Template report tidak ditemukan.');const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,windowWidth:1000});const dataUrl=canvas.toDataURL('image/png');waBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png',1));$('#waPreviewStage').html(`<img src="${dataUrl}" alt="Preview Operational Status">`);$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',!waBlob)}catch(e){console.error(e);showMessage('Gagal membuat gambar report.')}}).fail(showAjaxError)}
+    function selectedIds(){return $('.wa-history-check:checked').map(function(){return String($(this).val())}).get()}
+    async function buildImagePreview(){const ids=selectedIds();$('#waSelectedInfo').text(ids.length+' data dipilih');$('#waSelectAll').prop('checked',$('.wa-history-check').length>0&&ids.length===$('.wa-history-check').length);waBlob=null;waRenderedIds=[];$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',true);if(!ids.length){$('#waPreviewStage').html('<div class="wa-empty">Pilih minimal satu historical.</div>');return}if(typeof html2canvas==='undefined'){showMessage('html2canvas belum termuat. Pastikan koneksi internet atau simpan library html2canvas secara lokal.');return}$('#waPreviewStage').html('<div class="wa-generating"><i class="fas fa-spinner fa-spin"></i>Membuat gambar report...</div>');$.ajax({url:"{{ route('operational-status.whatsapp-report-preview') }}",type:'POST',data:{_token:$('input[name="_token"]').first().val(),ids:ids,include_summary:$('#waIncludeSummary').is(':checked')?1:0}}).done(async function(res){try{$('#waRenderTarget').html(res.html||'');waFilename=res.filename||waFilename;waCaption=res.caption||waCaption;if(document.fonts&&document.fonts.ready)await document.fonts.ready;await new Promise(r=>setTimeout(r,60));const el=document.getElementById('ops-report-image');if(!el)throw new Error('Template report tidak ditemukan.');const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false,windowWidth:1000});const dataUrl=canvas.toDataURL('image/png');waBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png',1));if(!waBlob)throw new Error('Gagal membentuk file gambar.');waRenderedIds=ids;$('#waPreviewStage').html(`<img src="${dataUrl}" alt="Preview Operational Status">`);$('#btnSendWhatsapp,#btnDownloadWhatsapp').prop('disabled',!waBlob)}catch(e){console.error(e);showMessage('Gagal membuat gambar report.')}}).fail(showAjaxError)}
     function downloadImage(){if(!waBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(waBlob);a.download=waFilename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
     async function sendWhatsappImage(){
         if(!waBlob){
@@ -1457,6 +1467,7 @@ $(function(){
         formData.append('_token',$('input[name="_token"]').first().val());
         formData.append('caption',waCaption||'');
         formData.append('photo',waBlob,waFilename||'operational-status.png');
+        waRenderedIds.forEach(id=>formData.append('ids[]',id));
 
         $.ajax({
             url:"{{ route('operational-status.whatsapp-send-image') }}",
@@ -1467,6 +1478,11 @@ $(function(){
             timeout:90000
         }).done(function(res){
             showMessage(res.message||'Report berhasil dikirim ke grup WhatsApp.','success');
+            const currentHistoryId=String($('#opsForm input[name="history_id"]').val()||'');
+            if(res.status_updated!==false&&waRenderedIds.includes(currentHistoryId)){
+                $('#opsForm input[name$="[dt_actual]"]').prop('readOnly',true).removeClass('manual');
+                $('#opsForm input[name="HD_DRAFT_EDITABLE"]').val('0');
+            }
         }).fail(function(xhr){
             showAjaxError(xhr);
         }).always(function(){
