@@ -203,6 +203,7 @@ class OperationalStatusController extends Controller
                     'TRIP_PLAN' => $row['trip_plan'] ?? null,
                     'PDTY_ACTUAL' => (int) round((float)($row['pdty_actual'] ?? 0)),
                     'PDTY_PLAN' => $row['pdty_plan'] ?? null,
+                    'EQU_GROUPID' => $row['equ_groupid'] ?? null,
                     'PLAN_REFERENCE' => $row['plan_reference'] ?? null,
                     'WD_STATUS' => $row['wd_status'] ?? null,
                     'REMARK' => $row['remark'] ?? null,
@@ -289,6 +290,7 @@ class OperationalStatusController extends Controller
                 $row->DT_PLAN = null;
                 $row->TRIP_PLAN = null;
                 $row->PDTY_PLAN = null;
+                // EQU_GROUPID diambil dari REALTIME.MATCHING_FLEET.
                 $row->WD_STATUS = null;
                 $row->REMARK = null;
 
@@ -364,17 +366,11 @@ class OperationalStatusController extends Controller
                 ? (int) round((float)($productivity['actual'] ?? 0))
                 : 0;
 
-            // P.DTY Plan BUKAN dari stored procedure.
-            // Rumus:
-            // OB  = Trip Plan x 42
-            // MUD = Trip Plan x 30
-            $tripPlan = is_numeric($row->TRIP_PLAN ?? null)
-                ? (float)$row->TRIP_PLAN
-                : null;
-
-            $row->PDTY_PLAN = $tripPlan !== null
-                ? (int) round($tripPlan * ($row->MATERIAL === 'MUD' ? 30 : 42))
-                : null;
+            // Gunakan target Equipment Type sebagai default, tetapi pertahankan
+            // P.DTY Plan yang pernah disimpan pada history (termasuk nilai 0).
+            if (!is_numeric($row->PDTY_PLAN ?? null)) {
+                $row->PDTY_PLAN = $this->equipmentProductivityPlan($row->EQU_GROUPID ?? null);
+            }
 
             return $row;
         });
@@ -438,9 +434,8 @@ class OperationalStatusController extends Controller
                 'PDTY_ACTUAL' => isset($productivityByEx[$loaderId][$material])
                     ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
                     : 0,
-                'PDTY_PLAN' => is_numeric($prior['trip_plan'] ?? null)
-                    ? (int) round((float)$prior['trip_plan'] * ($material === 'MUD' ? 30 : 42))
-                    : null,
+                'PDTY_PLAN' => $prior['pdty_plan'] ?? null,
+                'EQU_GROUPID' => $prior['equ_groupid'] ?? null,
                 'PLAN_REFERENCE' => $prior['plan_reference'] ?? null,
                 'WD_STATUS' => $prior['wd_status'] ?? null,
                 'REMARK' => $prior['remark'] ?? '',
@@ -448,6 +443,37 @@ class OperationalStatusController extends Controller
             ]);
             $knownLoaders[$loaderId] = true;
         }
+
+        // Resolusi tipe dari fleet atau hasil procedure; history lama tetap bisa terbaca.
+        $equipmentGroups = $this->equipmentGroupsByLoader();
+        $details = $details->map(function ($row) use ($equipmentGroups, $productivityByEx, $history) {
+            $loaderId = $this->normalizeReportLoaderId($row->VHC_ID ?? '');
+            $type = $equipmentGroups[$loaderId] ?? ($row->EQU_GROUPID ?? null);
+            if ($this->equipmentProductivityPlan($type) === null) {
+                foreach (($productivityByEx[$loaderId] ?? []) as $data) {
+                    if ($this->equipmentProductivityPlan($data['equ_group'] ?? null) !== null) {
+                        $type = $data['equ_group'];
+                        break;
+                    }
+                }
+            }
+            $row->EQU_GROUPID = $type;
+            // Prioritas P.DTY Plan:
+            // 1. Edit history: pertahankan nilai manual dari laporan tersebut.
+            // 2. Jam baru + tipe dengan target (2500/2600/2000): gunakan target tipe,
+            //    BUKAN plan dari history sebelumnya.
+            // 3. Jam baru + tipe tanpa target (misalnya HT yang tidak terpetakan):
+            //    gunakan plan terakhir dari history sebelumnya, jika tersedia.
+            $typePlan = $this->equipmentProductivityPlan($type);
+            if ($history) {
+                if (!is_numeric($row->PDTY_PLAN ?? null)) {
+                    $row->PDTY_PLAN = $typePlan;
+                }
+            } elseif ($typePlan !== null) {
+                $row->PDTY_PLAN = $typePlan;
+            } // Jika tidak ada target tipe, nilai carry history tetap dipertahankan.
+            return $row;
+        });
 
         // Pertahankan hanya satu entri per EX; jangan gandakan baris dari fleet
         // realtime dan transaksi historis (mis. EX277 ketika baru operasi).
@@ -611,6 +637,8 @@ class OperationalStatusController extends Controller
             }
         }
 
+        $equipmentGroups = $this->equipmentGroupsByLoader();
+
         $units = collect($request->input('units', []))
             ->map(function ($unit) {
                 $pop = max(0, (int)($unit['pop'] ?? 0));
@@ -673,7 +701,7 @@ class OperationalStatusController extends Controller
         $submittedDetails = collect($request->input('details', []))
             ->map(function ($detail) use (
                 $snapshotByExMaterial, $productivitySnapshot, $editingHistory,
-                $canEditActualHd, $previousDetails, $assignmentHd
+                $canEditActualHd, $previousDetails, $assignmentHd, $equipmentGroups
             ) {
                 $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
                 $materials = $snapshotByExMaterial[$loaderId] ?? [];
@@ -719,14 +747,33 @@ class OperationalStatusController extends Controller
                     ? (int) round((float)($productivity['actual'] ?? 0))
                     : 0;
 
-                // Plan selalu dihitung dari Trip Plan.
-                $tripPlan = is_numeric($detail['trip_plan'] ?? null)
-                    ? (float)$detail['trip_plan']
-                    : null;
-
-                $detail['pdty_plan'] = $tripPlan !== null
-                    ? (int) round($tripPlan * ($material === 'MUD' ? 30 : 42))
-                    : null;
+                // Equipment Type menentukan nilai default P.DTY Plan.
+                // User boleh mengubah nilai target; nilai manual disimpan di snapshot.
+                $equipmentGroup = $equipmentGroups[$loaderId] ?? ($previous['equ_groupid'] ?? null);
+                if ($this->equipmentProductivityPlan($equipmentGroup) === null) {
+                    foreach (($productivitySnapshot[$loaderId] ?? []) as $data) {
+                        if ($this->equipmentProductivityPlan($data['equ_group'] ?? null) !== null) {
+                            $equipmentGroup = $data['equ_group'];
+                            break;
+                        }
+                    }
+                }
+                $detail['equ_groupid'] = $equipmentGroup;
+                $inputPlan = $detail['pdty_plan'] ?? null;
+                if ($inputPlan !== null && $inputPlan !== '') {
+                    if (!is_numeric($inputPlan) || (float)$inputPlan < 0 || (float)$inputPlan > 1000000) {
+                        throw ValidationException::withMessages([
+                            'details' => 'P.DTY Plan harus berupa angka antara 0 dan 1.000.000.',
+                        ]);
+                    }
+                    $detail['pdty_plan'] = (int)round((float)$inputPlan);
+                } else {
+                    $defaultPlan = $this->equipmentProductivityPlan($equipmentGroup);
+                    $previousPlan = $previous['pdty_plan'] ?? null;
+                    $detail['pdty_plan'] = $defaultPlan !== null
+                        ? $defaultPlan
+                        : (is_numeric($previousPlan) ? (int) round((float) $previousPlan) : null);
+                }
 
                 return $detail;
             })->values()->all();
@@ -752,7 +799,7 @@ class OperationalStatusController extends Controller
                 'source' => 'focus.dbo.PRD_RITATION',
                 'classification' => 'LOD_MAT_ID',
                 'pdty_actual_source' => 'focus_reporting.dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR',
-                'pdty_plan_formula' => 'OB: trip_plan*42; MUD: trip_plan*30',
+                'pdty_plan_formula' => 'Default Equipment Type: 2500=800; 2600=900; 2000=600 BCM/jam; dapat diubah manual',
                 'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
             ],
         ]);
@@ -1398,6 +1445,36 @@ class OperationalStatusController extends Controller
      * Shift malam 00-06 otomatis diarahkan ke tanggal kalender berikutnya
      * di dalam procedure.
      */
+    /** Target per excavator per jam berdasarkan Equipment Type, bukan Trip Plan. */
+    private function equipmentProductivityPlan($equipmentGroup): ?int
+    {
+        $type = strtoupper(trim((string)($equipmentGroup ?? '')));
+        if ($type === '') {
+            return null;
+        }
+
+        // Mendukung EQU_GROUPID berupa HT2500, PC2000-8, 2500, dsb.
+        if (preg_match('/(?:^|[^0-9])(2500|2600|2000)(?:[^0-9]|$)/', $type, $match)) {
+            return ['2500' => 800, '2600' => 900, '2000' => 600][$match[1]];
+        }
+
+        return null; // Tipe tidak diketahui: tidak menebak dari nomor EX.
+    }
+
+    /** Ambil mapping Equipment Type terbaru dari fleet, juga untuk unit history. */
+    private function equipmentGroupsByLoader(): array
+    {
+        return DB::connection('focus_reporting')
+            ->table('REALTIME.MATCHING_FLEET')
+            ->whereNotNull('VHC_ID')
+            ->select('VHC_ID', 'EQU_GROUPID')
+            ->get()
+            ->mapWithKeys(function ($row) {
+                $loaderId = $this->normalizeReportLoaderId($row->VHC_ID);
+                return $loaderId !== '' ? [$loaderId => $row->EQU_GROUPID] : [];
+            })->all();
+    }
+
     private function operationalStatusActualPerExForHour(
         string $reportDate,
         int $shiftNo,
@@ -1827,6 +1904,12 @@ class OperationalStatusController extends Controller
                 $area = 'BELUM TERPETAKAN';
             }
 
+            $exPlan = is_numeric($detail['pdty_plan'] ?? null)
+                ? (int)$detail['pdty_plan']
+                : $this->equipmentProductivityPlan($detail['equ_groupid'] ?? null);
+            $exTrips = (int)($materials['OB']['trips'] ?? 0) + (int)($materials['MUD']['trips'] ?? 0);
+            $obPlan = $exPlan !== null && $exTrips > 0
+                ? (int)round($exPlan * (int)($materials['OB']['trips'] ?? 0) / $exTrips) : null;
             foreach (['OB' => 42, 'MUD' => 30] as $material => $factor) {
                 $trips = (int)($materials[$material]['trips'] ?? 0);
                 if ($trips <= 0) {
@@ -1854,9 +1937,7 @@ class OperationalStatusController extends Controller
                     'pdty_actual' => isset($productivityByEx[$loaderId][$material])
                         ? (int) round((float)($productivityByEx[$loaderId][$material]['actual'] ?? 0))
                         : 0,
-                    'pdty_plan' => is_numeric($detail['trip_plan'] ?? null)
-                        ? (int) round((float)$detail['trip_plan'] * $factor)
-                        : '-',
+                    'pdty_plan' => $exPlan === null ? '-' : ($material === 'OB' ? $obPlan : $exPlan - $obPlan),
                     'wd' => $detail['wd_status'] ?? '-',
                     'remark' => trim((string)($detail['remark'] ?? ($mapped ? '' : 'Loader belum terdaftar di fleet/history'))),
                 ]);

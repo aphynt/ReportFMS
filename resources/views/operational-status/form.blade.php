@@ -261,7 +261,7 @@
                             <td class="center"><span class="readonly-value">{{ $row->TRIP_ACTUAL??0 }}</span><input type="hidden" name="details[{{ $i }}][trip_actual]" value="{{ $row->TRIP_ACTUAL??0 }}"></td>
                             <td><input type="number" class="ops-input manual center required-manual trip-plan" data-row="{{ $i }}" name="details[{{ $i }}][trip_plan]" value="{{ $row->TRIP_PLAN??'' }}" placeholder="-"></td>
                             <td class="center"><span class="readonly-value">{{ number_format((float)($row->PDTY_ACTUAL??0),0,',','.') }}</span><input type="hidden" name="details[{{ $i }}][pdty_actual]" value="{{ (int)round((float)($row->PDTY_ACTUAL??0)) }}"></td>
-                            <td><input type="number" class="ops-input manual center pdty-plan" id="pdty_plan_{{ $i }}" name="details[{{ $i }}][pdty_plan]" value="{{ $row->PDTY_PLAN??'' }}" placeholder="-"></td>
+                            <td><input type="number" class="ops-input manual center pdty-plan" id="pdty_plan_{{ $i }}" name="details[{{ $i }}][pdty_plan]" value="{{ $row->PDTY_PLAN??'' }}" placeholder="-" min="0" step="1" title="Default dari Equipment Type: {{ $row->EQU_GROUPID ?? 'Tidak ditemukan' }}. Dapat diubah manual."><input type="hidden" name="details[{{ $i }}][equ_groupid]" value="{{ $row->EQU_GROUPID ?? '' }}"></td>
                             <td class="center"><span class="ref-pill">{{ $row->PLAN_REFERENCE??'-' }}</span><input type="hidden" name="details[{{ $i }}][plan_reference]" value="{{ $row->PLAN_REFERENCE }}"></td>
                             <td>
                                 <input type="text"
@@ -1427,8 +1427,8 @@ $(function(){
     $('#report_date').on('change',loadSelectedHour);
     updateHourEnd();
     $('#btnReload').on('click',loadSelectedHour);
-    $('.trip-plan').on('input',function(){const row=$(this).data('row'),trip=parseFloat($(this).val()),pdty=$('#pdty_plan_'+row);if(!isNaN(trip)&&!pdty.data('manual'))pdty.val(Math.round(trip*42));updateCompletion()});
-    $('.pdty-plan').on('input',function(){$(this).data('manual',true)});
+    // Trip Plan tidak mengubah P.DTY Plan. P.DTY Plan dapat dikoreksi manual.
+    $('.trip-plan').on('input', updateCompletion);
     function calculateReady(row){const pop=parseInt($('.unit-pop[data-row="'+row+'"]').val(),10)||0;const down=parseInt($('.unit-down[data-row="'+row+'"]').val(),10)||0;$('#unit_ready_'+row).val(Math.max(0,pop-down))}
     $(document).on('input change','.unit-pop,.unit-down',function(){calculateReady($(this).data('row'))});
     $('.unit-pop').each(function(){calculateReady($(this).data('row'))});
