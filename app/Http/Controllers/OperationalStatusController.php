@@ -799,7 +799,7 @@ class OperationalStatusController extends Controller
                 'source' => 'focus.dbo.PRD_RITATION',
                 'classification' => 'LOD_MAT_ID',
                 'pdty_actual_source' => 'focus_reporting.dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR',
-                'pdty_plan_formula' => 'Default Equipment Type: 2500=800; 2600=900; 2000=600 BCM/jam; dapat diubah manual',
+                'pdty_plan_formula' => 'Default Equipment Type: 2500=840; 2600=924; 2000=600 BCM/jam; dapat diubah manual',
                 'captured_at' => Carbon::now('Asia/Makassar')->toDateTimeString(),
             ],
         ]);
@@ -895,8 +895,7 @@ class OperationalStatusController extends Controller
                 'CREATED_BY' => optional(Auth::user())->name ?? optional(Auth::user())->nik ?? null,
                 'IS_ACTIVE' => 1,
             ]);
-            // Set langsung agar tetap tersimpan meskipun kolom ini belum
-            // didaftarkan pada $fillable model.
+
             $created->HD_DRAFT_EDITABLE = 1;
             $created->save();
 
@@ -949,7 +948,6 @@ class OperationalStatusController extends Controller
             ->values();
 
         $rows = $this->sortHistories($rows, $shiftNo)->map(fn($row) => [
-            // String menjaga presisi SQL Server BIGINT di sisi JavaScript.
             'id' => (string)$row->ID,
             'hour_start' => substr($row->HOUR_START, 0, 5),
             'hour_end' => substr($row->HOUR_END, 0, 5),
@@ -1055,7 +1053,6 @@ class OperationalStatusController extends Controller
             }
 
             try {
-                // Kunci Actual HD hanya setelah WhatsApp mengonfirmasi sukses.
                 (new OperationalStatusHistory())->getConnection()->transaction(function () use ($histories) {
                     $sentHistories = OperationalStatusHistory::whereIn('ID', $histories->pluck('ID'))
                         ->where('IS_ACTIVE', 1)
@@ -1072,7 +1069,6 @@ class OperationalStatusController extends Controller
                 });
             } catch (\Throwable $e) {
                 report($e);
-                // Jangan mengaku pengiriman gagal karena WA sudah menerima foto.
                 return response()->json([
                     'success' => true,
                     'message' => 'Gambar terkirim ke WhatsApp, tetapi penguncian status gagal. Hubungi admin.',
@@ -1224,11 +1220,6 @@ class OperationalStatusController extends Controller
                     continue;
                 }
 
-                /*
-                 * Blank juga disimpan. Jadi jika user sengaja menghapus
-                 * keterangan lama, nilai kosong dari penyimpanan terbaru
-                 * benar-benar menggantikan keterangan sebelumnya.
-                 */
                 $remarks[$hourKey] = trim((string)($item['remark'] ?? ''));
             }
         }
@@ -1269,8 +1260,6 @@ class OperationalStatusController extends Controller
             $obTrips = (int)($actualByHour[$hourKey]['OB'] ?? 0);
             $mudTrips = (int)($actualByHour[$hourKey]['MUD'] ?? 0);
 
-            // Volume Produksi harus sama dengan total P.DTY Actual seluruh EX
-            // pada jam dan material yang sama.
             $hourlyProductivity = $this->operationalStatusActualPerExForHour(
                 $reportDate,
                 $shiftNo,
@@ -1384,10 +1373,6 @@ class OperationalStatusController extends Controller
         return $ratio > 0 && $ratio <= 35.5 ? 'MUD' : 'OB';
     }
 
-    /**
-     * Rata-rata jarak hauling untuk ritasi dengan LOD_MAT_ID = OB.
-     * Material diambil langsung dari sumber PRD_RITATION, bukan nama disposal.
-     */
     private function hourlyAverageObDistance(string $reportDate, int $shiftNo): array
     {
         return DB::connection('focus')
@@ -1408,44 +1393,17 @@ class OperationalStatusController extends Controller
             ->all();
     }
 
-    /**
-     * Normalisasi kode EX agar "EX265", " ex265 " tetap cocok.
-     */
     private function normalizeLoaderId($loaderId): string
     {
         return preg_replace('/\s+/', '', strtoupper(trim((string)$loaderId)));
     }
 
-    /**
-     * Padankan identitas loader riwayat, fleet dan snapshot.
-     */
     private function normalizeReportLoaderId($loaderId): string
     {
         $id = $this->normalizeLoaderId($loaderId);
         return preg_match('/^[0-9]+$/', $id) ? 'EX'.$id : $id;
     }
 
-    /**
-     * Ritasi actual tiap EX pada satu slot jam: [start, end).
-     * Dipakai juga ketika edit history agar field TRIP_ACTUAL tidak membaca 0 lama.
-     *
-     * CATATAN: sumber ini adalah PRD_RITATION, sesuai koneksi controller lama.
-     * Bila telemetry FROM_UNIT berasal dari tabel lain, perlu mapping sumbernya.
-     */
-    /**
-     * Satu sumber transaksi per jam untuk rekap dan Prty Aktual per EX.
-     * OB: COUNT(*) × 42 BCM; MD: COUNT(*) × 30 M3.
-     * __UNASSIGNED__ menampung loader kosong agar rekonsiliasi tetap utuh.
-     */
-    /**
-     * P.DTY Actual per EX/material untuk satu jam.
-     * Sumber: dbo.APP_GET_OPERATIONAL_STATUS_PER_EX_HOUR.
-     *
-     * Procedure menerima REPORT_DATE shift, SHIFT_NO, dan jam laporan.
-     * Shift malam 00-06 otomatis diarahkan ke tanggal kalender berikutnya
-     * di dalam procedure.
-     */
-    /** Target per excavator per jam berdasarkan Equipment Type, bukan Trip Plan. */
     private function equipmentProductivityPlan($equipmentGroup): ?int
     {
         $type = strtoupper(trim((string)($equipmentGroup ?? '')));
@@ -1455,13 +1413,12 @@ class OperationalStatusController extends Controller
 
         // Mendukung EQU_GROUPID berupa HT2500, PC2000-8, 2500, dsb.
         if (preg_match('/(?:^|[^0-9])(2500|2600|2000)(?:[^0-9]|$)/', $type, $match)) {
-            return ['2500' => 800, '2600' => 900, '2000' => 600][$match[1]];
+            return ['2500' => 840, '2600' => 924, '2000' => 600][$match[1]];
         }
 
-        return null; // Tipe tidak diketahui: tidak menebak dari nomor EX.
+        return null;
     }
 
-    /** Ambil mapping Equipment Type terbaru dari fleet, juga untuk unit history. */
     private function equipmentGroupsByLoader(): array
     {
         return DB::connection('focus_reporting')
@@ -1549,9 +1506,7 @@ class OperationalStatusController extends Controller
                 (int)($byEx[$loaderId][$material]['trips'] ?? 0) + (int)$record->TRIP_COUNT;
             $byEx[$loaderId][$material]['hd'] =
                 (int)($byEx[$loaderId][$material]['hd'] ?? 0) + (int)$record->HD_ACTUAL;
-            // Simpan jumlah jarak dalam meter dan jumlah ritasi dengan jarak valid.
-            // AVG baru dihitung setelah loader ID dinormalisasi untuk menghindari
-            // rata-rata dari rata-rata jika variasi penulisan EX digabung.
+
             $byEx[$loaderId][$material]['haul_meters_valid'] =
                 (float)($byEx[$loaderId][$material]['haul_meters_valid'] ?? 0) + (float)($record->HAUL_METERS_VALID ?? 0);
             $byEx[$loaderId][$material]['haul_count_valid'] =
@@ -1582,15 +1537,6 @@ class OperationalStatusController extends Controller
             }, []);
     }
 
-    /**
-     * Rekap ritasi aktual sesuai LOD_MAT_ID (bukan LOC_NAME / DISPOSAL / mapping EX).
-     * OB = kode 'OB', MUD = kode 'MD'. Kode lainnya tidak dihitung.
-     * Menggunakan window [start, end) dari OPR_REPORTTIME, termasuk transaksi
-     * terlambat yang SYS_CREATEDAT-nya masuk setelah jam laporan.
-     *
-     * $histories tetap di signature demi kompatibilitas pemanggil sebelumnya,
-     * tetapi tidak dipakai sebagai sumber trip/material.
-     */
     private function actualTripTotalsByHour(
         string $reportDate,
         int $shiftNo,
@@ -1627,14 +1573,6 @@ class OperationalStatusController extends Controller
         return $totals;
     }
 
-    /**
-     * HD aktual UNIK per jam dan material, langsung dari transaksi FOCUS.
-     * Tidak menjumlahkan COUNT(DISTINCT VHC_ID) dari per-EX karena satu HD
-     * bisa melayani lebih dari satu loader di jam yang sama.
-     *
-     * OB = LOD_MAT_ID 'OB'; MUD = LOD_MAT_ID 'MD'.
-     * Window [start,end) dipilih berdasarkan shift agar tepat lintas tengah malam.
-     */
     private function actualHdTotalsByHour(string $reportDate, int $shiftNo): array
     {
         $start = Carbon::createFromFormat(
@@ -1672,8 +1610,7 @@ class OperationalStatusController extends Controller
         $shiftNo = (int)$first->SHIFT_NO;
         $reportDate = Carbon::parse($first->REPORT_DATE)->format('Y-m-d');
         $avgDistanceObByHour = $this->hourlyAverageObDistance($reportDate, $shiftNo);
-        // HD dasar tetap dihitung dari FOCUS. Jika DT Actual diedit dari
-        // assignment, terapkan selisihnya terhadap HD FOCUS saat draft disimpan.
+
         $hdAktualByHour = $this->actualHdTotalsByHour($reportDate, $shiftNo);
         $hdAdjustmentsByHour = [];
         foreach ($rows as $historyRow) {
@@ -1693,10 +1630,7 @@ class OperationalStatusController extends Controller
             }
             $hdAdjustmentsByHour[$hourKey] = $adjustments;
         }
-        // V12: Preview WA/PNG selalu mengambil ritasi aktual terkini dari FOCUS,
-        // termasuk transaksi yang masuk setelah history disimpan. History resmi
-        // di database TIDAK diubah oleh preview; snapshot diperbarui saat CCR
-        // membuka Edit dan menekan Simpan.
+
         $actualTripTotals = $this->actualTripTotalsByHour($reportDate, $shiftNo, $rows);
         $hourlyRows = [];
 
@@ -1719,7 +1653,6 @@ class OperationalStatusController extends Controller
             $mudTrip = (int)($actualTripTotals[$hourKey]['MUD'] ?? 0);
             $nextHour = ($hour + 1) % 24;
 
-            // Volume OB/MUD = jumlah P.DTY Actual seluruh EX pada jam tersebut.
             $hourlyProductivity = $this->operationalStatusActualPerExForHour(
                 $reportDate,
                 $shiftNo,
@@ -1749,8 +1682,7 @@ class OperationalStatusController extends Controller
         }
 
         $lastPayload = json_decode($last->PAYLOAD_JSON, true) ?: [];
-        // Nilai HD yang disimpan untuk jam terakhir saja. Jangan memakai
-        // metadata history sebelumnya karena koreksi tidak boleh terbawa jam.
+
         $savedActualHdForLastHour = [];
         foreach ($lastPayload['details'] ?? [] as $detail) {
             $loaderId = $this->normalizeReportLoaderId($detail['vhc_id'] ?? '');
@@ -1760,9 +1692,6 @@ class OperationalStatusController extends Controller
             }
         }
 
-        // Bagian Produksi Perjam hanya menampilkan EX yang mempunyai ritasi/volume
-        // pada interval laporan terakhir. Preview mengambil transaksi LIVE FOCUS,
-        // bukan daftar EX yang lama dalam snapshot/history.
         $lastHourStart = substr((string) $last->HOUR_START, 0, 5);
         $lastSlotStart = Carbon::createFromFormat(
             'Y-m-d H:i',
@@ -1774,8 +1703,6 @@ class OperationalStatusController extends Controller
         }
         $lastSlotEnd = $lastSlotStart->copy()->addHour();
 
-        // Satu sumber data untuk header Produksi dan detail EX: FOCUS OPR_REPORTTIME.
-        // Histori tetap menjadi sumber Area, Plan, W/D, Remark, Status Unit/Operator.
         $snapshotDetails = $this->actualTripsByExMaterialForWindow($lastSlotStart, $lastSlotEnd);
 
         $productivityByEx = $this->operationalStatusActualPerExForHour(
@@ -1784,8 +1711,6 @@ class OperationalStatusController extends Controller
             (int)$lastSlotStart->format('H')
         );
 
-        // Normalisasi kode EX di snapshot agar EX269 / ex269 / 269 tidak
-        // dianggap sebagai tiga loader berbeda pada hasil laporan.
         $activeLoaders = [];
         foreach ($snapshotDetails as $rawLoaderId => $materials) {
             $loaderId = $this->normalizeReportLoaderId($rawLoaderId);
@@ -1809,9 +1734,6 @@ class OperationalStatusController extends Controller
             }
         }
 
-        // Ambil data area/Plan/W-D/Remark dari history terbaru terlebih dahulu.
-        // Jika suatu loader sudah tidak ada dalam MATCHING_FLEET saat laporan
-        // dibuat tetapi tadi sempat berproduksi, pakai metadata history terdahulu.
         $metadataByLoader = [];
         $addMetadata = function (array $payload) use (&$metadataByLoader): void {
             foreach (($payload['details'] ?? []) as $detail) {
@@ -1839,8 +1761,7 @@ class OperationalStatusController extends Controller
 
         $missingMetadata = array_diff(array_keys($activeLoaders), array_keys($metadataByLoader));
         if (count($missingMetadata) > 0) {
-            // Cari metadata EX di beberapa history sebelum slot terpilih.
-            // Penelusuran dibatasi supaya preview tetap ringan.
+
             $cursor = $lastSlotStart->copy();
             for ($attempt = 0; $attempt < 6 && count($missingMetadata) > 0; $attempt++) {
                 $previous = $this->latestCarryHistoryBefore($cursor);
@@ -1865,8 +1786,6 @@ class OperationalStatusController extends Controller
             }
         }
 
-        // Prioritaskan EX yang tercatat dalam form/history, kemudian loader
-        // lain yang punya transaksi aktual. Hanya volume positif yang tampil.
         $loaderOrder = array_values(array_unique(array_merge(
             array_keys($metadataByLoader),
             array_keys($activeLoaders)
@@ -1882,8 +1801,6 @@ class OperationalStatusController extends Controller
                 'MUD' => (int)($materials['MUD']['hd'] ?? 0),
             ];
             if (array_key_exists($loaderId, $savedActualHdForLastHour)) {
-                // Form memiliki satu angka HD per EX. Jika EX bekerja di dua
-                // material, bagi secara proporsional agar totalnya tetap sama.
                 $obWeight = $hdByMaterial['OB'] + $hdByMaterial['MUD'] > 0
                     ? $hdByMaterial['OB']
                     : (int)($materials['OB']['trips'] ?? 0);
@@ -1915,9 +1832,7 @@ class OperationalStatusController extends Controller
                 if ($trips <= 0) {
                     continue;
                 }
-                // Jarak dipakai dari transaksi FOCUS jam yang sama, material sama.
-                // Jika tidak ada RIT_HAULDISTANCE >= 500 meter, tampilkan '-'
-                // pada Blade, bukan menganggap jarak nyata = nol.
+
                 $validDistanceCount = (int)($materials[$material]['haul_count_valid'] ?? 0);
                 $actualDistanceKm = $validDistanceCount > 0
                     ? round((float)($materials[$material]['haul_meters_valid'] ?? 0)
